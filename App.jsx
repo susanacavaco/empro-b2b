@@ -7,6 +7,20 @@ import {
   Download, Receipt, CreditCard, CalendarClock, RotateCcw, PackageCheck, PackageX, Truck,
   Heart, User, Mail, RefreshCw, Send
 } from "lucide-react";
+import { initializeApp } from "firebase/app";
+import { getFirestore, collection, addDoc, serverTimestamp } from "firebase/firestore";
+
+/* ── Firebase ── */
+const firebaseConfig = {
+  apiKey: "AIzaSyDNj0GlusY9akmJsDL4gmWfwXEKkyKStYI",
+  authDomain: "empro-plataforma.firebaseapp.com",
+  projectId: "empro-plataforma",
+  storageBucket: "empro-plataforma.firebasestorage.app",
+  messagingSenderId: "1019620030255",
+  appId: "1:1019620030255:web:45d823642969d12a3313da",
+};
+const firebaseApp = initializeApp(firebaseConfig);
+const db = getFirestore(firebaseApp);
 
 /* ── Google Fonts ── */
 const fontLink = document.createElement("link");
@@ -512,8 +526,36 @@ function EcrãCarrinho({ cart, onUpdateCart, onRemove, onNav, onCheckout }) {
   const ivaTotal = cart.reduce((s,c) => s + precoCliente(c) * c.qty * (c.iva/100), 0);
   const total    = subtotal + ivaTotal;
 
-  const handleOrder = () => {
-    // Gera resumo da encomenda para email
+  const handleOrder = async () => {
+    // Guarda encomenda no Firebase
+    try {
+      const encomenda = {
+        cliente: CLIENT.name,
+        nif: CLIENT.nif,
+        local: CLIENT.local,
+        comercial: CLIENT.comercial,
+        items: cart.map(c => ({
+          id: c.id,
+          nome: c.nome,
+          ref: c.ref,
+          qty: c.qty,
+          unidade: c.unidade,
+          precoUnit: precoCliente(c),
+          total: precoCliente(c) * c.qty,
+        })),
+        subtotal,
+        iva: ivaTotal,
+        total,
+        observacoes: obs,
+        estado: "pendente",
+        criadoEm: serverTimestamp(),
+      };
+      await addDoc(collection(db, "encomendas"), encomenda);
+    } catch (e) {
+      console.error("Erro ao guardar encomenda:", e);
+    }
+
+    // Abre email de confirmação
     const linhas = cart.map(c => `- ${c.nome} × ${c.qty} ${c.unidade} = €${fmt(precoCliente(c)*c.qty)}`).join("%0D%0A");
     const obsLine = obs ? `%0D%0AObservações: ${encodeURIComponent(obs)}` : "";
     const subject = encodeURIComponent(`Nova Encomenda — ${CLIENT.name} — ${new Date().toLocaleDateString("pt-PT")}`);
@@ -608,7 +650,7 @@ function EcrãCarrinho({ cart, onUpdateCart, onRemove, onNav, onCheckout }) {
             <textarea value={obs} onChange={e => setObs(e.target.value)} placeholder="Hora de entrega, instruções especiais..." rows={3} style={{ width:"100%", padding:"10px 12px", border:`1px solid ${T.border}`, borderRadius:10, fontSize:13, color: T.text, background: T.bg, outline:"none", resize:"vertical", fontFamily: S.font, boxSizing:"border-box" }} />
           </div>
 
-          <Btn onClick={handleOrder} full size="lg" icon={CheckCircle}>
+          <Btn onClick={() => handleOrder()} full size="lg" icon={CheckCircle}>
             Confirmar Encomenda
           </Btn>
 
