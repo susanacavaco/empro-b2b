@@ -114,6 +114,20 @@ function precoCliente(p) {
 
 function fmt(n) { return n.toLocaleString("pt-PT", { minimumFractionDigits:2, maximumFractionDigits:2 }); }
 
+function openPdf(pdfData) {
+  if (!pdfData) return;
+  try {
+    if (pdfData.startsWith("data:")) {
+      const base64 = pdfData.split(",")[1];
+      const bytes = Uint8Array.from(atob(base64), c => c.charCodeAt(0));
+      const blob = new Blob([bytes], { type: "application/pdf" });
+      window.open(URL.createObjectURL(blob), "_blank");
+    } else {
+      window.open(pdfData, "_blank");
+    }
+  } catch(e) { alert("Erro ao abrir PDF: " + e.message); }
+}
+
 /* ── Components ── */
 
 function Badge({ children, color, small }) {
@@ -473,10 +487,10 @@ function EcrãCatalogo({ produtos, loadingProdutos, cart, onCart, favorites, onT
                 </div>
                 {/* Botão PDF fundo esquerda */}
                 {p.pdf && (
-                  <a href={p.pdf} target="_blank" rel="noreferrer"
-                    style={{ position:"absolute", bottom:10, left:10, zIndex:2, display:"flex", alignItems:"center", gap:5, background:"white", border:`1px solid ${T.red}`, borderRadius:8, padding:"5px 10px", color: T.red, fontSize:11, fontWeight:700, textDecoration:"none", boxShadow:"0 1px 6px #0002" }}>
-                    <FileText size={13} /> Ficha PDF
-                  </a>
+                  <button onClick={(e) => { e.stopPropagation(); openPdf(p.pdf); }}
+                    style={{ position:"absolute", bottom:10, left:10, zIndex:2, display:"flex", alignItems:"center", gap:5, background:"white", border:`1px solid ${T.red}`, borderRadius:8, padding:"5px 10px", color: T.red, fontSize:11, fontWeight:700, cursor:"pointer", boxShadow:"0 1px 6px #0002" }}>
+                    <FileText size={13} /> Ficha Técnica
+                  </button>
                 )}
               </div>
 
