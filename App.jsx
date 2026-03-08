@@ -1361,6 +1361,7 @@ export default function LojaEmpro() {
               novo: false,
               desc: data.descricao || "",
               foto: data.foto || "",
+              pdf: data.pdf || "",
               stock: data.stock || 0,
             };
           });
