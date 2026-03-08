@@ -1,14 +1,15 @@
 import { useState, useEffect } from "react";
 import {
-  ShoppingCart, Package, FileText, Home, LogOut, ChevronRight,
-  Plus, Minus, Trash2, Tag, AlertCircle, CheckCircle, Clock,
-  TrendingUp, Euro, Search, Filter, X, ChevronDown, Star,
-  MapPin, Phone, Building2, ArrowRight, Sparkles, Gift,
-  Download, Receipt, CreditCard, CalendarClock, RotateCcw, PackageCheck, PackageX, Truck,
-  Heart, User, Mail, RefreshCw, Send
+  Home, Package, ShoppingBag, Users, BarChart2, Settings,
+  LogOut, Bell, Search, Plus, Edit2, Trash2, CheckCircle,
+  Clock, AlertCircle, TrendingUp, Euro, ChevronDown,
+  ChevronRight, X, Check, Filter, Download, RefreshCw,
+  Tag, Truck, Eye, MapPin, Phone, Building2, Mail,
+  ArrowUp, ArrowDown
 } from "lucide-react";
 import { initializeApp } from "firebase/app";
-import { getFirestore, collection, addDoc, serverTimestamp } from "firebase/firestore";
+import { getFirestore, collection, onSnapshot, doc, updateDoc, addDoc, deleteDoc, query, orderBy, serverTimestamp } from "firebase/firestore";
+import { getStorage, ref as storageRef, uploadBytes, getDownloadURL } from "firebase/storage";
 
 /* ── Firebase ── */
 const firebaseConfig = {
@@ -21,8 +22,9 @@ const firebaseConfig = {
 };
 const firebaseApp = initializeApp(firebaseConfig);
 const db = getFirestore(firebaseApp);
+const storage = getStorage(firebaseApp);
 
-/* ── Google Fonts ── */
+/* ── Fonts ── */
 const fontLink = document.createElement("link");
 fontLink.rel = "stylesheet";
 fontLink.href = "https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700;800&family=DM+Sans:wght@300;400;500;600;700&display=swap";
@@ -30,708 +32,384 @@ document.head.appendChild(fontLink);
 
 /* ── Tokens ── */
 const T = {
-  navy:   "#13294B", navyD: "#0a1a30", navyL: "#1e3d6e",
-  red:    "#E73C3E", redL:  "#ff6b6d",
-  bg:     "#F5F4F0", bgWarm:"#FDFCF8",
-  white:  "#ffffff",
-  text:   "#1a2744", muted: "#7a8ba8", mutedL:"#b0bdd0",
+  navy: "#13294B", navyD: "#0a1a30", navyL: "#1e3d6e",
+  red: "#E73C3E", redL: "#ff6b6d",
+  bg: "#F5F4F0", bgWarm: "#FDFCF8",
+  white: "#ffffff",
+  text: "#1a2744", muted: "#7a8ba8", mutedL: "#b0bdd0",
   border: "#E2DDD6",
-  green:  "#1aab6d", orange:"#f59e0b", blue:"#3b82f6",
+  green: "#1aab6d", orange: "#f59e0b", blue: "#3b82f6",
+  sidebar: "#0f2240",
 };
-
 const S = {
-  font:    "'DM Sans', sans-serif",
+  font: "'DM Sans', sans-serif",
   display: "'Playfair Display', Georgia, serif",
 };
 
-/* ── Demo Data ── */
-const INVITE_CODE = "EMPRO2025";
-
-const CLIENT = {
-  name: "Restaurante Marina", nif: "501234567", local: "Albufeira",
-  tipo: "A", comercial: "João Ferreira", phone: "+351 912 000 000",
-  saldo: 2740.80, limite: 8000, credito: 5259.20,
-  desconto_base: 5,
-};
-
-const FAMILIAS = [
-  { id:"cerveja",      label:"Cerveja",        icon:"🍺", color: T.orange },
-  { id:"vinho",        label:"Vinho",           icon:"🍷", color: T.red    },
-  { id:"espumante",    label:"Espumante",       icon:"🥂", color: T.navy   },
-  { id:"refrigerante", label:"Refrigerantes",   icon:"🥤", color: T.blue   },
-  { id:"agua",         label:"Água",            icon:"💧", color: "#06b6d4"},
-  { id:"energetica",   label:"Energéticas",     icon:"⚡", color: T.green  },
-  { id:"sucovmo",      label:"Sumos",           icon:"🍊", color: "#f97316"},
-];
-
-const PRODUTOS = [
-  { id:1,  familia:"cerveja",      nome:"Sagres 33cl NR",           ref:"SAG-33NR", unidade:"cx 24un", preco:17.28,  iva:23, min:1,  destaque:true,  novo:false, desc:"A cerveja mais vendida em Portugal. Ideal para esplanadas e restauração." },
-  { id:2,  familia:"cerveja",      nome:"Super Bock 33cl",          ref:"SB-33",    unidade:"cx 24un", preco:16.32,  iva:23, min:1,  destaque:true,  novo:false, desc:"Clássico nacional, preferência dos consumidores do Norte ao Sul." },
-  { id:3,  familia:"cerveja",      nome:"Heineken 33cl",            ref:"HNK-33",   unidade:"cx 24un", preco:21.60,  iva:23, min:1,  destaque:false, novo:false, desc:"A cerveja internacional de referência para os clientes mais exigentes." },
-  { id:4,  familia:"cerveja",      nome:"Sagres Preta 33cl",        ref:"SAG-PT",   unidade:"cx 24un", preco:18.00,  iva:23, min:1,  destaque:false, novo:true,  desc:"Cerveja torrada com sabor intenso e aroma a malte." },
-  { id:5,  familia:"vinho",        nome:"Vinho Verde Gazela",       ref:"GAZ-VV",   unidade:"cx 6un",  preco:14.40,  iva:23, min:1,  destaque:true,  novo:false, desc:"Vinho verde frescante, perfeito para petiscos e peixe." },
-  { id:6,  familia:"vinho",        nome:"Herdade do Esporão Branco",ref:"ESP-BR",   unidade:"cx 6un",  preco:43.80,  iva:23, min:1,  destaque:false, novo:false, desc:"Vinho premium do Alentejo, notas frutadas e mineral." },
-  { id:7,  familia:"vinho",        nome:"Pêra-Manca Tinto",         ref:"PM-TT",    unidade:"cx 6un",  preco:98.40,  iva:23, min:1,  destaque:false, novo:false, desc:"Referência do vinho alentejano de topo." },
-  { id:8,  familia:"espumante",    nome:"Murganheira Bruto",        ref:"MUR-BR",   unidade:"cx 6un",  preco:34.80,  iva:23, min:1,  destaque:true,  novo:false, desc:"Espumante nacional de qualidade, ideal para celebrações e aperitivos." },
-  { id:9,  familia:"espumante",    nome:"Porta Nova Extra Bruto",   ref:"PN-XB",    unidade:"cx 6un",  preco:41.40,  iva:23, min:1,  destaque:false, novo:true,  desc:"Novo na gama — espumante vinhão de alta intensidade." },
-  { id:10, familia:"refrigerante", nome:"Coca-Cola 33cl",           ref:"CC-33",    unidade:"cx 24un", preco:13.92,  iva:23, min:1,  destaque:true,  novo:false, desc:"O refrigerante mais consumido do mundo. Essencial em qualquer carta." },
-  { id:11, familia:"refrigerante", nome:"Fanta Laranja 33cl",       ref:"FNT-33",   unidade:"cx 24un", preco:12.96,  iva:23, min:1,  destaque:false, novo:false, desc:"Alternativa frutada, ideal para famílias e público jovem." },
-  { id:12, familia:"refrigerante", nome:"Lipton Ice Tea 33cl",      ref:"LIP-33",   unidade:"cx 24un", preco:14.88,  iva:23, min:1,  destaque:false, novo:false, desc:"Chá frio com sabor a limão, tendência crescente no verão." },
-  { id:13, familia:"agua",         nome:"Água Monchique 1L",        ref:"MON-1L",   unidade:"cx 12un", preco:4.20,   iva:6,  min:2,  destaque:true,  novo:false, desc:"Água alcalina de nascente, a favorita dos clientes do Algarve." },
-  { id:14, familia:"agua",         nome:"Água Luso 0,5L",           ref:"LUS-05",   unidade:"cx 24un", preco:5.76,   iva:6,  min:2,  destaque:false, novo:false, desc:"A água portuguesa mais reconhecida a nível nacional." },
-  { id:15, familia:"energetica",   nome:"Red Bull 25cl",            ref:"RB-25",    unidade:"cx 24un", preco:34.80,  iva:23, min:1,  destaque:true,  novo:false, desc:"Líder mundial de bebidas energéticas. Alta margem e rotação rápida." },
-  { id:16, familia:"energetica",   nome:"Monster Energy 50cl",      ref:"MON-50",   unidade:"cx 24un", preco:38.40,  iva:23, min:1,  destaque:false, novo:true,  desc:"Formato grande, tendência entre público 18–35 anos." },
-  { id:17, familia:"sucovmo",      nome:"Compal Pêssego 33cl",      ref:"CMP-PE",   unidade:"cx 24un", preco:15.36,  iva:23, min:1,  destaque:false, novo:false, desc:"Sumo nacional de referência, grande aceitação em todas as idades." },
-  { id:18, familia:"sucovmo",      nome:"Sumol Laranja 33cl",       ref:"SML-LR",   unidade:"cx 24un", preco:13.44,  iva:23, min:1,  destaque:false, novo:false, desc:"Clássico português com alta rotação em pastelarias e snack bars." },
-];
-
-const PROMOS = [
-  { id:1, titulo:"Pack Verão Cerveja", desc:"Compre 5 caixas, leve 6", valor:"17% OFF", cor: T.red,    produtos:["SAG-33NR","SB-33"] },
-  { id:2, titulo:"Promoção Red Bull",  desc:"Encomendas +10cx: €0.20/cx desconto", valor:"€0.20/cx", cor: T.blue,   produtos:["RB-25"] },
-  { id:3, titulo:"Vinho Verde Quintas",desc:"Seleção Vinhos Verdes +50un", valor:"10% OFF", cor: T.green,  produtos:["GAZ-VV"] },
-];
-
-const HISTORICO = [
-  { id:"ENC-2025-042", data:"26 Fev 2025", total:842.50,  items:5,  estado:"entregue",   prods:["Sagres 33cl ×3cx","Red Bull 25cl ×2cx"] },
-  { id:"ENC-2025-031", data:"14 Fev 2025", total:1230.00, items:8,  estado:"entregue",   prods:["Super Bock 33cl ×5cx","Coca-Cola 33cl ×2cx","Água Monchique ×3cx"] },
-  { id:"ENC-2025-018", data:"03 Fev 2025", total:390.80,  items:3,  estado:"entregue",   prods:["Vinho Verde Gazela ×4cx","Murganheira ×2cx"] },
-  { id:"ENC-2025-007", data:"22 Jan 2025", total:2150.00, items:12, estado:"entregue",   prods:["Heineken 33cl ×8cx","Red Bull 25cl ×4cx"] },
-  { id:"ENC-2025-001", data:"08 Jan 2025", total:590.80,  items:4,  estado:"entregue",   prods:["Sagres 33cl ×2cx","Fanta Laranja ×1cx","Sumol ×1cx"] },
-];
-
-const FATURAS = [
-  { id:"FT 2025/042", enc:"ENC-2025-042", data:"28 Fev 2025", venc:"28 Mar 2025", total:842.50,  iva:162.50, liquido:680.00, estado:"pendente",  vencida:false },
-  { id:"FT 2025/031", enc:"ENC-2025-031", data:"16 Fev 2025", venc:"18 Mar 2025", total:1230.00, iva:237.20, liquido:992.80, estado:"pendente",  vencida:false },
-  { id:"FT 2025/018", enc:"ENC-2025-018", data:"05 Fev 2025", venc:"05 Mar 2025", total:390.80,  iva:75.40,  liquido:315.40, estado:"vencida",   vencida:true  },
-  { id:"FT 2025/007", enc:"ENC-2025-007", data:"24 Jan 2025", venc:"24 Fev 2025", total:2150.00, iva:414.80, liquido:1735.20,estado:"paga",      vencida:false },
-  { id:"FT 2025/001", enc:"ENC-2025-001", data:"10 Jan 2025", venc:"10 Fev 2025", total:590.80,  iva:113.92, liquido:476.88, estado:"paga",      vencida:false },
-  { id:"FT 2024/198", enc:"ENC-2024-198", data:"22 Dez 2024", venc:"22 Jan 2025", total:1840.20, iva:355.00, liquido:1485.20,estado:"paga",      vencida:false },
-];
-function precoCliente(p) {
-  const d = CLIENT.desconto_base / 100;
-  return p.preco * (1 - d);
+function fmt(n) {
+  if (n === undefined || n === null) return "0,00";
+  return Number(n).toLocaleString("pt-PT", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
-function fmt(n) { return n.toLocaleString("pt-PT", { minimumFractionDigits:2, maximumFractionDigits:2 }); }
-
-/* ── Components ── */
+function fmtDate(ts) {
+  if (!ts) return "—";
+  const d = ts.toDate ? ts.toDate() : new Date(ts);
+  return d.toLocaleDateString("pt-PT", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
+}
 
 function Badge({ children, color, small }) {
   return (
-    <span style={{ background: color+"22", color, padding: small ? "2px 7px" : "3px 10px", borderRadius:20, fontSize: small ? 10 : 11, fontWeight:700, fontFamily:"monospace", letterSpacing:0.4, whiteSpace:"nowrap" }}>
+    <span style={{ background: color + "22", color, padding: small ? "2px 8px" : "4px 12px", borderRadius: 20, fontSize: small ? 10 : 11, fontWeight: 700, fontFamily: "monospace", letterSpacing: 0.4, whiteSpace: "nowrap" }}>
       {children}
     </span>
   );
 }
 
-function Btn({ children, onClick, variant="primary", size="md", icon: Icon, full, disabled }) {
+function Btn({ children, onClick, variant = "primary", size = "md", icon: Icon, full, disabled }) {
   const styles = {
-    primary:   { bg: T.red,    color:"white",  border: "none" },
-    secondary: { bg: "white",  color: T.navy,  border: `1px solid ${T.border}` },
-    ghost:     { bg: "transparent", color: T.muted, border: "none" },
-    navy:      { bg: T.navy,   color:"white",  border: "none" },
+    primary: { bg: T.red, color: "white", border: "none" },
+    secondary: { bg: "white", color: T.navy, border: `1px solid ${T.border}` },
+    ghost: { bg: "transparent", color: T.muted, border: "none" },
+    navy: { bg: T.navy, color: "white", border: "none" },
+    green: { bg: T.green, color: "white", border: "none" },
   };
-  const sizes = { sm:"8px 14px", md:"11px 20px", lg:"14px 28px" };
+  const sizes = { sm: "7px 12px", md: "10px 18px", lg: "13px 24px" };
   const st = styles[variant];
   return (
     <button onClick={onClick} disabled={disabled} style={{
       background: st.bg, color: st.color, border: st.border,
-      padding: sizes[size], borderRadius:10, fontSize: size==="sm" ? 12 : 14,
-      fontWeight:600, fontFamily: S.font, cursor: disabled ? "not-allowed" : "pointer",
-      display:"inline-flex", alignItems:"center", gap:6, opacity: disabled ? 0.5 : 1,
-      width: full ? "100%" : "auto", justifyContent:"center",
-      transition:"all .15s", boxShadow: variant==="primary" ? `0 3px 12px ${T.red}44` : "none",
-    }}
-      onMouseEnter={e => { if(!disabled && variant==="primary") e.currentTarget.style.background=T.navyD; }}
-      onMouseLeave={e => { if(!disabled && variant==="primary") e.currentTarget.style.background=T.red; }}
-    >
-      {Icon && <Icon size={size==="sm"?13:15} />}{children}
+      padding: sizes[size], borderRadius: 9, fontSize: size === "sm" ? 12 : 13,
+      fontWeight: 600, fontFamily: S.font, cursor: disabled ? "not-allowed" : "pointer",
+      display: "inline-flex", alignItems: "center", gap: 6, opacity: disabled ? 0.5 : 1,
+      width: full ? "100%" : "auto", justifyContent: "center", transition: "all .15s",
+    }}>
+      {Icon && <Icon size={size === "sm" ? 12 : 14} />}{children}
     </button>
   );
 }
 
-/* ── ECRÃ: Acesso por Convite ── */
-function EcrãConvite({ onAccess }) {
-  const [code, setCode] = useState("");
-  const [error, setError] = useState(false);
-  const [shake, setShake] = useState(false);
+/* ══════════════════════════════════════
+   ECRÃ: ENCOMENDAS (Firebase real-time)
+══════════════════════════════════════ */
+function EcrãEncomendas() {
+  const [encomendas, setEncomendas] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [expanded, setExpanded] = useState(null);
+  const [filtro, setFiltro] = useState("todas");
+  const [search, setSearch] = useState("");
+  const [atualizando, setAtualizando] = useState(null);
 
-  const handleSubmit = () => {
-    if (code.trim().toUpperCase() === INVITE_CODE) {
-      onAccess();
-    } else {
-      setError(true);
-      setShake(true);
-      setTimeout(() => setShake(false), 500);
+  useEffect(() => {
+    const q = query(collection(db, "encomendas"), orderBy("criadoEm", "desc"));
+    const unsub = onSnapshot(q, (snap) => {
+      const docs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      setEncomendas(docs);
+      setLoading(false);
+    }, (err) => {
+      console.error("Firebase error:", err);
+      setLoading(false);
+    });
+    return () => unsub();
+  }, []);
+
+  const atualizarEstado = async (id, novoEstado) => {
+    setAtualizando(id);
+    try {
+      await updateDoc(doc(db, "encomendas", id), { estado: novoEstado });
+    } catch (e) {
+      console.error("Erro ao atualizar:", e);
     }
+    setAtualizando(null);
   };
 
-  return (
-    <div style={{ minHeight:"100vh", background: T.navyD, display:"flex", fontFamily: S.font, overflow:"hidden", position:"relative" }}>
-      {/* Fundo geométrico */}
-      <div style={{ position:"absolute", inset:0, overflow:"hidden", pointerEvents:"none" }}>
-        <div style={{ position:"absolute", top:-120, right:-120, width:500, height:500, borderRadius:"50%", background:`${T.red}12`, border:`1px solid ${T.red}22` }} />
-        <div style={{ position:"absolute", bottom:-80, left:-80, width:400, height:400, borderRadius:"50%", background:`${T.navyL}44`, border:`1px solid ${T.navyL}33` }} />
-        <div style={{ position:"absolute", top:"40%", left:"55%", width:200, height:200, borderRadius:"50%", background:`${T.red}08` }} />
-        {/* Grid lines */}
-        {[0,1,2,3,4].map(i => (
-          <div key={i} style={{ position:"absolute", left:0, right:0, top:`${i*25}%`, height:1, background:`${T.navyL}22` }} />
-        ))}
-      </div>
+  const estadoCor = { pendente: T.orange, confirmada: T.blue, em_entrega: T.navy, entregue: T.green, cancelada: T.red };
+  const estadoLabel = { pendente: "Pendente", confirmada: "Confirmada", em_entrega: "Em Entrega", entregue: "Entregue", cancelada: "Cancelada" };
+  const estadoProx = { pendente: "confirmada", confirmada: "em_entrega", em_entrega: "entregue" };
 
-      {/* Lado esquerdo */}
-      <div style={{ flex:1, display:"flex", flexDirection:"column", justifyContent:"center", padding:"60px 80px", position:"relative" }}>
-        {/* Logo */}
-        <div style={{ marginBottom:60 }}>
-          <div style={{ fontSize:11, color: T.red, letterSpacing:4, fontFamily:"monospace", marginBottom:8 }}>DISTRIBUIDORA DE BEBIDAS</div>
-          <div style={{ fontSize:48, fontWeight:800, color:"white", fontFamily: S.display, lineHeight:1 }}>EMPRO</div>
-          <div style={{ fontSize:13, color: T.muted, letterSpacing:2, marginTop:4 }}>EMPRODALBE, LDA · DESDE 1990</div>
-        </div>
-
-        <div style={{ maxWidth:460 }}>
-          <h1 style={{ fontSize:38, fontWeight:700, color:"white", fontFamily: S.display, lineHeight:1.2, marginBottom:16 }}>
-            A sua loja<br />
-            <span style={{ color: T.red }}>B2B privada.</span>
-          </h1>
-          <p style={{ fontSize:16, color: T.muted, lineHeight:1.7, marginBottom:40 }}>
-            Acesso exclusivo para clientes EMPRO.<br />
-            Encomende 24h/dia com os seus preços personalizados.
-          </p>
-
-          {/* Features */}
-          {[
-            { Icon: Tag,        text: "Preços personalizados para a sua empresa" },
-            { Icon: Package,    text: "Catálogo completo com stock em tempo real" },
-            { Icon: FileText,   text: "Histórico e faturas sempre disponíveis" },
-          ].map((f,i) => {
-            const FIcon = f.Icon;
-            return (
-            <div key={i} style={{ display:"flex", alignItems:"center", gap:14, marginBottom:16 }}>
-              <div style={{ width:36, height:36, borderRadius:10, background:`${T.red}22`, display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>
-                <FIcon size={16} color={T.red} />
-              </div>
-              <span style={{ fontSize:14, color: T.mutedL }}>{f.text}</span>
-            </div>
-            );
-          })}
-        </div>
-      </div>
-
-      {/* Lado direito — form */}
-      <div style={{ width:460, display:"flex", alignItems:"center", justifyContent:"center", padding:40, position:"relative" }}>
-        <div style={{
-          background: T.bgWarm, borderRadius:24, padding:48, width:"100%",
-          boxShadow:"0 32px 80px rgba(0,0,0,.4)",
-          animation: shake ? "shake .4s ease" : "none",
-        }}>
-          <style>{`@keyframes shake { 0%,100%{transform:translateX(0)} 25%{transform:translateX(-8px)} 75%{transform:translateX(8px)} }`}</style>
-
-          <div style={{ marginBottom:32 }}>
-            <div style={{ fontSize:22, fontWeight:700, color: T.navy, fontFamily: S.display, marginBottom:8 }}>Acesso restrito</div>
-            <div style={{ fontSize:14, color: T.muted }}>Introduza o código de convite enviado pelo seu comercial EMPRO.</div>
-          </div>
-
-          <div style={{ marginBottom:24 }}>
-            <label style={{ fontSize:11, fontWeight:700, color: T.muted, textTransform:"uppercase", letterSpacing:1.5, display:"block", marginBottom:8, fontFamily:"monospace" }}>
-              Código de Convite
-            </label>
-            <input
-              value={code}
-              onChange={e => { setCode(e.target.value.toUpperCase()); setError(false); }}
-              onKeyDown={e => e.key === "Enter" && handleSubmit()}
-              placeholder="Ex: EMPRO2025"
-              style={{
-                width:"100%", padding:"14px 16px", borderRadius:12, boxSizing:"border-box",
-                border: `2px solid ${error ? T.red : T.border}`,
-                fontSize:18, fontWeight:700, letterSpacing:3, textAlign:"center",
-                fontFamily:"monospace", color: T.navy, background: error ? `${T.red}08` : T.white,
-                outline:"none", transition:"border .2s",
-              }}
-            />
-            {error && (
-              <div style={{ display:"flex", alignItems:"center", gap:6, marginTop:8, color: T.red, fontSize:13 }}>
-                <AlertCircle size={14} /> Código inválido. Contacte o seu comercial.
-              </div>
-            )}
-          </div>
-
-          <Btn onClick={handleSubmit} full size="lg" icon={ArrowRight}>
-            Entrar na Loja
-          </Btn>
-
-          <div style={{ marginTop:24, padding:"16px", background: T.bg, borderRadius:12, display:"flex", gap:12, alignItems:"flex-start" }}>
-            <Phone size={14} color={T.muted} style={{ marginTop:2, flexShrink:0 }} />
-            <div>
-              <div style={{ fontSize:12, fontWeight:600, color: T.navy }}>Não tem código?</div>
-              <div style={{ fontSize:12, color: T.muted, marginTop:2 }}>Contacte a EMPRO: <strong style={{ color: T.navy }}>+351 289 400 450</strong> ou <strong style={{ color: T.navy }}>geral@empro.pt</strong></div>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-/* ── ECRÃ: Dashboard ── */
-function EcrãDashboard({ onNav, cart }) {
-  const pct = Math.round(CLIENT.saldo / CLIENT.limite * 100);
-
-  return (
-    <div>
-      {/* Hero */}
-      <div style={{ background:`linear-gradient(135deg, ${T.navyD}, ${T.navy})`, borderRadius:20, padding:"32px 36px", marginBottom:24, position:"relative", overflow:"hidden" }}>
-        <div style={{ position:"absolute", top:-60, right:-60, width:240, height:240, borderRadius:"50%", background:`${T.red}18` }} />
-        <div style={{ position:"absolute", bottom:-40, right:120, width:160, height:160, borderRadius:"50%", background:`${T.navyL}44` }} />
-        <div style={{ position:"relative" }}>
-          <div style={{ fontSize:12, color: T.mutedL, letterSpacing:2, textTransform:"uppercase", fontFamily:"monospace", marginBottom:6 }}>Bem-vindo de volta</div>
-          <h1 style={{ fontSize:28, fontWeight:700, color:"white", fontFamily: S.display, margin:"0 0 4px" }}>{CLIENT.name}</h1>
-          <div style={{ display:"flex", gap:16, alignItems:"center", marginTop:8 }}>
-            <div style={{ display:"flex", alignItems:"center", gap:6, color: T.mutedL, fontSize:13 }}><MapPin size={13} />{CLIENT.local}</div>
-            <div style={{ display:"flex", alignItems:"center", gap:6, color: T.mutedL, fontSize:13 }}><Building2 size={13} />NIF {CLIENT.nif}</div>
-            <Badge color={T.orange}>Tipo {CLIENT.tipo}</Badge>
-          </div>
-        </div>
-      </div>
-
-      {/* KPIs */}
-      <div style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:14, marginBottom:24 }}>
-        {[
-          { label:"Saldo em Aberto", value:`€${fmt(CLIENT.saldo)}`, sub:"em faturas por vencer", color: T.red,    Icon: Euro,       warn: pct > 70 },
-          { label:"Crédito Disponível", value:`€${fmt(CLIENT.credito)}`, sub:`de €${fmt(CLIENT.limite)} de limite`, color: T.green, Icon: TrendingUp, warn: false },
-          { label:"Desconto Personalizado", value:`${CLIENT.desconto_base}%`, sub:"aplicado a todo o catálogo", color: T.navy, Icon: Tag, warn: false },
-        ].map((k,i) => {
-          const KIcon = k.Icon;
-          return (
-          <div key={i} style={{ background: T.white, borderRadius:16, padding:"20px 22px", border:`1px solid ${T.border}`, borderTop:`3px solid ${k.color}` }}>
-            <div style={{ width:36, height:36, borderRadius:10, background:`${k.color}18`, display:"flex", alignItems:"center", justifyContent:"center", marginBottom:12 }}>
-              <KIcon size={18} color={k.color} />
-            </div>
-            <div style={{ fontSize:24, fontWeight:800, color: k.color, fontFamily: S.display }}>{k.value}</div>
-            <div style={{ fontSize:12, color: T.muted, marginTop:3 }}>{k.label}</div>
-            {i === 0 && (
-              <div style={{ marginTop:10 }}>
-                <div style={{ display:"flex", justifyContent:"space-between", marginBottom:4 }}>
-                  <span style={{ fontSize:10, color: T.muted }}>{pct}% do limite</span>
-                </div>
-                <div style={{ height:4, background: T.bg, borderRadius:2 }}>
-                  <div style={{ width:`${pct}%`, height:"100%", background: pct>70 ? T.red : T.green, borderRadius:2 }} />
-                </div>
-              </div>
-            )}
-          </div>
-          );
-        })}
-      </div>
-
-      {/* Promoções */}
-      <div style={{ marginBottom:24 }}>
-        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:14 }}>
-          <div style={{ fontSize:18, fontWeight:700, color: T.navy, fontFamily: S.display }}>Promoções Ativas</div>
-          <Btn variant="ghost" size="sm" onClick={() => onNav("catalogo")} icon={ChevronRight}>Ver catálogo</Btn>
-        </div>
-        <div style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:12 }}>
-          {PROMOS.map(p => (
-            <div key={p.id} onClick={() => onNav("catalogo")} style={{ background: T.white, borderRadius:14, padding:"18px 20px", border:`1px solid ${T.border}`, cursor:"pointer", borderLeft:`4px solid ${p.cor}`, transition:"box-shadow .15s" }}
-              onMouseEnter={e=>e.currentTarget.style.boxShadow="0 4px 20px rgba(0,0,0,.08)"}
-              onMouseLeave={e=>e.currentTarget.style.boxShadow="none"}
-            >
-              <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:8 }}>
-                <Gift size={18} color={p.cor} />
-                <span style={{ background:`${p.cor}22`, color:p.cor, fontWeight:800, fontSize:13, padding:"3px 10px", borderRadius:20 }}>{p.valor}</span>
-              </div>
-              <div style={{ fontSize:14, fontWeight:700, color: T.navy, fontFamily: S.display, marginBottom:4 }}>{p.titulo}</div>
-              <div style={{ fontSize:12, color: T.muted }}>{p.desc}</div>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {/* Últimas encomendas */}
-      <div>
-        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:14 }}>
-          <div style={{ fontSize:18, fontWeight:700, color: T.navy, fontFamily: S.display }}>Últimas Encomendas</div>
-          <Btn variant="ghost" size="sm" onClick={() => onNav("historico")} icon={ChevronRight}>Ver todas</Btn>
-        </div>
-        <div style={{ background: T.white, borderRadius:16, border:`1px solid ${T.border}`, overflow:"hidden" }}>
-          {HISTORICO.slice(0,3).map((enc,i) => (
-            <div key={enc.id} style={{ display:"flex", alignItems:"center", gap:16, padding:"14px 20px", borderBottom: i<2 ? `1px solid ${T.border}` : "none" }}>
-              <div style={{ width:40, height:40, borderRadius:10, background:`${T.green}18`, display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>
-                <CheckCircle size={18} color={T.green} />
-              </div>
-              <div style={{ flex:1 }}>
-                <div style={{ fontSize:13, fontWeight:700, color: T.navy }}>{enc.id}</div>
-                <div style={{ fontSize:12, color: T.muted }}>{enc.data} · {enc.items} artigos</div>
-              </div>
-              <div style={{ fontWeight:700, color: T.navy, fontSize:15 }}>€{fmt(enc.total)}</div>
-              <Badge color={T.green} small>entregue</Badge>
-            </div>
-          ))}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-/* ── ECRÃ: Catálogo ── */
-function EcrãCatalogo({ cart, onCart, favorites, onToggleFav }) {
-  const [familia, setFamilia] = useState("todos");
-  const [search, setSearch] = useState("");
-  const [showPromo, setShowPromo] = useState(false);
-  const [showFavs, setShowFavs] = useState(false);
-  const [qtds, setQtds] = useState({});
-
-  const filtered = PRODUTOS.filter(p => {
-    const matchFam = familia === "todos" || p.familia === familia;
-    const matchSearch = p.nome.toLowerCase().includes(search.toLowerCase()) || p.ref.toLowerCase().includes(search.toLowerCase());
-    const matchPromo = !showPromo || PROMOS.some(pr => pr.produtos.includes(p.ref));
-    const matchFav = !showFavs || favorites.includes(p.id);
-    return matchFam && matchSearch && matchPromo && matchFav;
+  const filtered = encomendas.filter(e => {
+    const matchFiltro = filtro === "todas" || e.estado === filtro;
+    const matchSearch = !search || (e.cliente || "").toLowerCase().includes(search.toLowerCase()) || (e.nif || "").includes(search);
+    return matchFiltro && matchSearch;
   });
 
-  const setQtd = (id, v) => setQtds(q => ({ ...q, [id]: Math.max(0, v) }));
-
-  const addToCart = (prod) => {
-    const qty = qtds[prod.id] || prod.min;
-    onCart(prod, qty);
-    setQtds(q => ({ ...q, [prod.id]: 0 }));
-  };
-
-  const inCart = (id) => cart.find(c => c.id === id);
+  const totalPendente = encomendas.filter(e => e.estado === "pendente").reduce((s, e) => s + (e.total || 0), 0);
+  const totalHoje = encomendas.filter(e => {
+    if (!e.criadoEm) return false;
+    const d = e.criadoEm.toDate ? e.criadoEm.toDate() : new Date(e.criadoEm);
+    return d.toDateString() === new Date().toDateString();
+  }).length;
 
   return (
     <div>
-      {/* Header */}
-      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:20 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 24 }}>
         <div>
-          <div style={{ fontSize:11, color: T.muted, letterSpacing:2, textTransform:"uppercase", fontFamily:"monospace", marginBottom:4 }}>Loja EMPRO</div>
-          <h1 style={{ margin:0, fontSize:28, fontWeight:700, color: T.navy, fontFamily: S.display }}>Catálogo</h1>
+          <div style={{ fontSize: 11, color: T.muted, letterSpacing: 2, textTransform: "uppercase", fontFamily: "monospace", marginBottom: 4 }}>Loja B2B</div>
+          <h1 style={{ margin: 0, fontSize: 28, fontWeight: 700, color: T.navy, fontFamily: S.display }}>Encomendas</h1>
         </div>
-        <div style={{ display:"flex", gap:10, alignItems:"center" }}>
-          <div style={{ display:"flex", alignItems:"center", gap:8, background: T.white, border:`1px solid ${T.border}`, borderRadius:10, padding:"9px 14px" }}>
-            <Search size={14} color={T.muted} />
-            <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Pesquisar produto ou ref..." style={{ border:"none", outline:"none", fontSize:13, color: T.text, width:200, background:"transparent", fontFamily: S.font }} />
-            {search && <X size={13} color={T.muted} style={{ cursor:"pointer" }} onClick={() => setSearch("")} />}
-          </div>
-          <button onClick={() => setShowPromo(!showPromo)} style={{ display:"flex", alignItems:"center", gap:7, padding:"9px 14px", borderRadius:10, border:`1px solid ${showPromo ? T.red : T.border}`, background: showPromo ? `${T.red}11` : T.white, color: showPromo ? T.red : T.muted, fontSize:13, fontWeight:600, cursor:"pointer", fontFamily: S.font }}>
-            <Sparkles size={14} />Promoções
-          </button>
-          <button onClick={() => setShowFavs(!showFavs)} style={{ display:"flex", alignItems:"center", gap:7, padding:"9px 14px", borderRadius:10, border:`1px solid ${showFavs ? T.orange : T.border}`, background: showFavs ? `${T.orange}11` : T.white, color: showFavs ? T.orange : T.muted, fontSize:13, fontWeight:600, cursor:"pointer", fontFamily: S.font }}>
-            <Heart size={14} fill={showFavs ? T.orange : "none"} />Favoritos {favorites.length > 0 && `(${favorites.length})`}
-          </button>
-        </div>
-      </div>
-
-      {/* Famílias */}
-      <div style={{ display:"flex", gap:8, marginBottom:24, flexWrap:"wrap" }}>
-        <button onClick={() => setFamilia("todos")} style={{ padding:"8px 16px", borderRadius:20, border:`1px solid ${familia==="todos" ? T.navy : T.border}`, background: familia==="todos" ? T.navy : T.white, color: familia==="todos" ? "white" : T.muted, fontSize:13, fontWeight:600, cursor:"pointer", fontFamily: S.font }}>
-          Todos ({PRODUTOS.length})
-        </button>
-        {FAMILIAS.map(f => {
-          const count = PRODUTOS.filter(p => p.familia === f.id).length;
-          const active = familia === f.id;
-          return (
-            <button key={f.id} onClick={() => setFamilia(f.id)} style={{ display:"flex", alignItems:"center", gap:6, padding:"8px 16px", borderRadius:20, border:`1px solid ${active ? f.color : T.border}`, background: active ? `${f.color}18` : T.white, color: active ? f.color : T.muted, fontSize:13, fontWeight: active ? 700 : 400, cursor:"pointer", fontFamily: S.font }}>
-              <span>{f.icon}</span>{f.label} ({count})
-            </button>
-          );
-        })}
-      </div>
-
-      {/* Grid */}
-      <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill, minmax(280px, 1fr))", gap:14 }}>
-        {filtered.map(p => {
-          const preco = precoCliente(p);
-          const precoIva = preco * (1 + p.iva/100);
-          const inC = inCart(p.id);
-          const famColor = FAMILIAS.find(f => f.id === p.familia)?.color || T.navy;
-          const promoAtiva = PROMOS.find(pr => pr.produtos.includes(p.ref));
-
-          return (
-            <div key={p.id} style={{ background: T.white, borderRadius:16, border:`1px solid ${T.border}`, overflow:"hidden", transition:"box-shadow .15s, transform .15s" }}
-              onMouseEnter={e=>{ e.currentTarget.style.boxShadow="0 8px 28px rgba(19,41,75,.1)"; e.currentTarget.style.transform="translateY(-2px)"; }}
-              onMouseLeave={e=>{ e.currentTarget.style.boxShadow="none"; e.currentTarget.style.transform="translateY(0)"; }}
-            >
-              {/* Topo */}
-              <div style={{ background:`linear-gradient(135deg, ${famColor}15, ${famColor}05)`, padding:"16px 18px", borderBottom:`1px solid ${T.border}`, display:"flex", justifyContent:"space-between", alignItems:"flex-start" }}>
-                <div style={{ display:"flex", gap:6, flexWrap:"wrap" }}>
-                  <Badge color={famColor} small>{FAMILIAS.find(f=>f.id===p.familia)?.label}</Badge>
-                  {p.destaque && <Badge color={T.orange} small>⭐ Destaque</Badge>}
-                  {p.novo && <Badge color={T.green} small>Novo</Badge>}
-                  {promoAtiva && <Badge color={T.red} small>🎁 Promo</Badge>}
-                </div>
-                {inC && <div style={{ width:20, height:20, borderRadius:"50%", background: T.green, display:"flex", alignItems:"center", justifyContent:"center" }}><CheckCircle size={12} color="white" /></div>}
-                <button onClick={(e) => { e.stopPropagation(); onToggleFav(p.id); }} style={{ background:"none", border:"none", cursor:"pointer", padding:2, display:"flex", alignItems:"center" }}>
-                  <Heart size={16} color={favorites.includes(p.id) ? T.orange : T.mutedL} fill={favorites.includes(p.id) ? T.orange : "none"} style={{ transition:"all .2s" }} />
-                </button>
-              </div>
-
-              {/* Corpo */}
-              <div style={{ padding:"16px 18px" }}>
-                <div style={{ fontSize:11, color: T.muted, fontFamily:"monospace", marginBottom:4 }}>{p.ref}</div>
-                <div style={{ fontSize:15, fontWeight:700, color: T.navy, fontFamily: S.display, marginBottom:6, lineHeight:1.3 }}>{p.nome}</div>
-                <div style={{ fontSize:12, color: T.muted, lineHeight:1.5, marginBottom:14, minHeight:36 }}>{p.desc}</div>
-
-                {/* Preços */}
-                <div style={{ background: T.bg, borderRadius:10, padding:"10px 12px", marginBottom:14 }}>
-                  <div style={{ display:"flex", justifyContent:"space-between", alignItems:"baseline" }}>
-                    <div>
-                      <div style={{ fontSize:18, fontWeight:800, color: T.navy, fontFamily: S.display }}>€{fmt(preco)}</div>
-                      <div style={{ fontSize:10, color: T.muted }}>s/ IVA · por {p.unidade}</div>
-                    </div>
-                    <div style={{ textAlign:"right" }}>
-                      <div style={{ fontSize:13, color: T.muted }}>€{fmt(precoIva)}</div>
-                      <div style={{ fontSize:10, color: T.muted }}>c/ IVA {p.iva}%</div>
-                    </div>
-                  </div>
-                  {CLIENT.desconto_base > 0 && (
-                    <div style={{ marginTop:6, fontSize:11, color: T.green, fontWeight:600 }}>
-                      ✓ Desconto {CLIENT.desconto_base}% aplicado
-                    </div>
-                  )}
-                </div>
-
-                {/* Quantidade + Add */}
-                <div style={{ display:"flex", gap:8, alignItems:"center" }}>
-                  <div style={{ display:"flex", alignItems:"center", border:`1px solid ${T.border}`, borderRadius:8, overflow:"hidden" }}>
-                    <button onClick={() => setQtd(p.id, (qtds[p.id]||p.min) - 1)} style={{ width:32, height:36, background:"none", border:"none", cursor:"pointer", color: T.muted, display:"flex", alignItems:"center", justifyContent:"center" }}><Minus size={13} /></button>
-                    <div style={{ width:36, textAlign:"center", fontSize:14, fontWeight:700, color: T.navy }}>{qtds[p.id] || p.min}</div>
-                    <button onClick={() => setQtd(p.id, (qtds[p.id]||p.min) + 1)} style={{ width:32, height:36, background:"none", border:"none", cursor:"pointer", color: T.muted, display:"flex", alignItems:"center", justifyContent:"center" }}><Plus size={13} /></button>
-                  </div>
-                  <Btn onClick={() => addToCart(p)} full icon={ShoppingCart} size="sm">
-                    {inC ? "Atualizar" : "Adicionar"}
-                  </Btn>
-                </div>
-              </div>
-            </div>
-          );
-        })}
-      </div>
-
-      {filtered.length === 0 && (
-        <div style={{ textAlign:"center", padding:"60px 20px", color: T.muted }}>
-          <Package size={48} color={T.border} style={{ margin:"0 auto 12px" }} />
-          <div style={{ fontSize:16 }}>Nenhum produto encontrado.</div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-/* ── ECRÃ: Carrinho ── */
-function EcrãCarrinho({ cart, onUpdateCart, onRemove, onNav, onCheckout }) {
-  const [obs, setObs] = useState("");
-  const [success, setSuccess] = useState(false);
-
-  const subtotal = cart.reduce((s,c) => s + precoCliente(c) * c.qty, 0);
-  const ivaTotal = cart.reduce((s,c) => s + precoCliente(c) * c.qty * (c.iva/100), 0);
-  const total    = subtotal + ivaTotal;
-
-  const handleOrder = async () => {
-    // Guarda encomenda no Firebase
-    try {
-      const encomenda = {
-        cliente: CLIENT.name,
-        nif: CLIENT.nif,
-        local: CLIENT.local,
-        comercial: CLIENT.comercial,
-        items: cart.map(c => ({
-          id: c.id,
-          nome: c.nome,
-          ref: c.ref,
-          qty: c.qty,
-          unidade: c.unidade,
-          precoUnit: precoCliente(c),
-          total: precoCliente(c) * c.qty,
-        })),
-        subtotal,
-        iva: ivaTotal,
-        total,
-        observacoes: obs,
-        estado: "pendente",
-        criadoEm: serverTimestamp(),
-      };
-      await addDoc(collection(db, "encomendas"), encomenda);
-    } catch (e) {
-      console.error("Erro ao guardar encomenda:", e);
-    }
-
-    // Abre email de confirmação
-    const linhas = cart.map(c => `- ${c.nome} × ${c.qty} ${c.unidade} = €${fmt(precoCliente(c)*c.qty)}`).join("%0D%0A");
-    const obsLine = obs ? `%0D%0AObservações: ${encodeURIComponent(obs)}` : "";
-    const subject = encodeURIComponent(`Nova Encomenda — ${CLIENT.name} — ${new Date().toLocaleDateString("pt-PT")}`);
-    const body = encodeURIComponent(`Boa tarde,\n\nO cliente ${CLIENT.name} (NIF ${CLIENT.nif}) submeteu uma nova encomenda:\n\n`)
-      + linhas
-      + `%0D%0A%0D%0ASubtotal s/ IVA: €${fmt(subtotal)}%0D%0AIVA: €${fmt(ivaTotal)}%0D%0ATotal c/ IVA: €${fmt(total)}`
-      + obsLine
-      + `%0D%0A%0D%0AEncomenda submetida via Loja B2B EMPRO.`;
-    window.open(`mailto:geral@empro.pt?subject=${subject}&body=${body}`);
-    setSuccess(true);
-    onCheckout();
-  };
-
-  if (success) return (
-    <div style={{ display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", minHeight:"60vh", textAlign:"center" }}>
-      <div style={{ width:80, height:80, borderRadius:"50%", background:`${T.green}18`, display:"flex", alignItems:"center", justifyContent:"center", margin:"0 auto 24px" }}>
-        <CheckCircle size={40} color={T.green} />
-      </div>
-      <h2 style={{ fontFamily: S.display, color: T.navy, fontSize:28, marginBottom:8 }}>Encomenda enviada!</h2>
-      <p style={{ color: T.muted, marginBottom:8, fontSize:15 }}>O seu comercial <strong>{CLIENT.comercial}</strong> vai confirmar em breve.</p>
-      <div style={{ display:"flex", alignItems:"center", gap:7, background:`${T.blue}11`, border:`1px solid ${T.blue}33`, borderRadius:10, padding:"10px 18px", marginBottom:32, color:T.blue, fontSize:13 }}>
-        <Mail size={14} />
-        Email de confirmação aberto no seu cliente de correio.
-      </div>
-      <Btn onClick={() => { setSuccess(false); onNav("dashboard"); }} icon={Home}>Voltar ao início</Btn>
-    </div>
-  );
-
-  if (cart.length === 0) return (
-    <div style={{ display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", minHeight:"60vh", textAlign:"center" }}>
-      <ShoppingCart size={56} color={T.border} style={{ marginBottom:20 }} />
-      <h2 style={{ fontFamily: S.display, color: T.navy, fontSize:24, marginBottom:8 }}>Carrinho vazio</h2>
-      <p style={{ color: T.muted, marginBottom:28 }}>Adicione produtos do catálogo para encomendar.</p>
-      <Btn onClick={() => onNav("catalogo")} icon={Package}>Ir ao catálogo</Btn>
-    </div>
-  );
-
-  return (
-    <div>
-      <div style={{ marginBottom:24 }}>
-        <div style={{ fontSize:11, color: T.muted, letterSpacing:2, textTransform:"uppercase", fontFamily:"monospace", marginBottom:4 }}>Revisão da</div>
-        <h1 style={{ margin:0, fontSize:28, fontWeight:700, color: T.navy, fontFamily: S.display }}>Encomenda</h1>
-      </div>
-
-      <div style={{ display:"grid", gridTemplateColumns:"1fr 340px", gap:20, alignItems:"start" }}>
-        {/* Itens */}
-        <div style={{ background: T.white, borderRadius:16, border:`1px solid ${T.border}`, overflow:"hidden" }}>
-          {cart.map((item,i) => {
-            const preco = precoCliente(item);
-            return (
-              <div key={item.id} style={{ display:"grid", gridTemplateColumns:"1fr auto auto auto", gap:16, padding:"16px 20px", borderBottom: i<cart.length-1 ? `1px solid ${T.border}` : "none", alignItems:"center" }}>
-                <div>
-                  <div style={{ fontSize:14, fontWeight:700, color: T.navy, fontFamily: S.display }}>{item.nome}</div>
-                  <div style={{ fontSize:12, color: T.muted }}>{item.ref} · {item.unidade}</div>
-                </div>
-                <div style={{ display:"flex", alignItems:"center", border:`1px solid ${T.border}`, borderRadius:8 }}>
-                  <button onClick={() => onUpdateCart(item.id, item.qty-1)} style={{ width:30, height:32, background:"none", border:"none", cursor:"pointer", color: T.muted, display:"flex", alignItems:"center", justifyContent:"center" }}><Minus size={12} /></button>
-                  <div style={{ width:30, textAlign:"center", fontSize:13, fontWeight:700, color: T.navy }}>{item.qty}</div>
-                  <button onClick={() => onUpdateCart(item.id, item.qty+1)} style={{ width:30, height:32, background:"none", border:"none", cursor:"pointer", color: T.muted, display:"flex", alignItems:"center", justifyContent:"center" }}><Plus size={12} /></button>
-                </div>
-                <div style={{ textAlign:"right" }}>
-                  <div style={{ fontWeight:700, color: T.navy }}>€{fmt(preco * item.qty)}</div>
-                  <div style={{ fontSize:11, color: T.muted }}>€{fmt(preco)}/un</div>
-                </div>
-                <button onClick={() => onRemove(item.id)} style={{ background:"none", border:"none", cursor:"pointer", color: T.muted, padding:4 }}><Trash2 size={15} /></button>
-              </div>
-            );
-          })}
-        </div>
-
-        {/* Resumo */}
-        <div style={{ background: T.white, borderRadius:16, border:`1px solid ${T.border}`, padding:24, position:"sticky", top:20 }}>
-          <div style={{ fontSize:16, fontWeight:700, color: T.navy, fontFamily: S.display, marginBottom:20 }}>Resumo</div>
-
-          {[
-            { label: "Subtotal s/ IVA", value: `€${fmt(subtotal)}` },
-            { label: `IVA`, value: `€${fmt(ivaTotal)}` },
-          ].map(r => (
-            <div key={r.label} style={{ display:"flex", justifyContent:"space-between", marginBottom:10 }}>
-              <span style={{ fontSize:13, color: T.muted }}>{r.label}</span>
-              <span style={{ fontSize:13, color: T.navy }}>{r.value}</span>
-            </div>
-          ))}
-
-          <div style={{ display:"flex", justifyContent:"space-between", padding:"14px 0", borderTop:`2px solid ${T.border}`, margin:"10px 0 20px" }}>
-            <span style={{ fontSize:16, fontWeight:700, color: T.navy }}>Total c/ IVA</span>
-            <span style={{ fontSize:20, fontWeight:800, color: T.red, fontFamily: S.display }}>€{fmt(total)}</span>
-          </div>
-
-          <div style={{ marginBottom:16 }}>
-            <label style={{ fontSize:11, fontWeight:700, color: T.muted, textTransform:"uppercase", letterSpacing:1, display:"block", marginBottom:6, fontFamily:"monospace" }}>Observações</label>
-            <textarea value={obs} onChange={e => setObs(e.target.value)} placeholder="Hora de entrega, instruções especiais..." rows={3} style={{ width:"100%", padding:"10px 12px", border:`1px solid ${T.border}`, borderRadius:10, fontSize:13, color: T.text, background: T.bg, outline:"none", resize:"vertical", fontFamily: S.font, boxSizing:"border-box" }} />
-          </div>
-
-          <Btn onClick={() => handleOrder()} full size="lg" icon={CheckCircle}>
-            Confirmar Encomenda
-          </Btn>
-
-          <div style={{ marginTop:12, fontSize:12, color: T.muted, textAlign:"center" }}>
-            O seu comercial <strong>{CLIENT.comercial}</strong> irá confirmar.
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          {loading && <div style={{ fontSize: 12, color: T.muted, display: "flex", alignItems: "center", gap: 6 }}><RefreshCw size={13} style={{ animation: "spin 1s linear infinite" }} />A sincronizar...</div>}
+          <div style={{ background: `${T.green}18`, border: `1px solid ${T.green}44`, borderRadius: 10, padding: "8px 14px", display: "flex", alignItems: "center", gap: 6 }}>
+            <div style={{ width: 8, height: 8, borderRadius: "50%", background: T.green, animation: "pulse 2s ease infinite" }} />
+            <span style={{ fontSize: 12, color: T.green, fontWeight: 600 }}>Tempo real</span>
           </div>
         </div>
       </div>
-    </div>
-  );
-}
 
-/* ── ECRÃ: Histórico ── */
-function EcrãHistorico({ onRepetir, onNav }) {
-  const [expanded, setExpanded] = useState(null);
-  const [repetido, setRepetido] = useState(null);
-  const estadoColor = { entregue: T.green, confirmada: T.orange, pendente: T.muted };
-
-  const handleRepetir = (enc) => {
-    onRepetir(enc);
-    setRepetido(enc.id);
-    setTimeout(() => { setRepetido(null); onNav("carrinho"); }, 800);
-  };
-
-  return (
-    <div>
-      <div style={{ marginBottom:24 }}>
-        <div style={{ fontSize:11, color: T.muted, letterSpacing:2, textTransform:"uppercase", fontFamily:"monospace", marginBottom:4 }}>Conta Corrente</div>
-        <h1 style={{ margin:0, fontSize:28, fontWeight:700, color: T.navy, fontFamily: S.display }}>Histórico de Encomendas</h1>
-      </div>
+      <style>{`
+        @keyframes spin { from { transform: rotate(0deg) } to { transform: rotate(360deg) } }
+        @keyframes pulse { 0%,100% { opacity:1 } 50% { opacity:0.4 } }
+      `}</style>
 
       {/* KPIs */}
-      <div style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:14, marginBottom:24 }}>
-        <div style={{ background: T.white, borderRadius:14, padding:"18px 20px", border:`1px solid ${T.border}`, borderTop:`3px solid ${T.navy}` }}>
-          <div style={{ fontSize:22, fontWeight:800, color: T.navy, fontFamily: S.display }}>{HISTORICO.length}</div>
-          <div style={{ fontSize:12, color: T.muted }}>Encomendas totais</div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 14, marginBottom: 24 }}>
+        {[
+          { label: "Total Encomendas", value: encomendas.length, icon: ShoppingBag, color: T.navy, sub: "histórico total" },
+          { label: "Hoje", value: totalHoje, icon: Clock, color: T.blue, sub: "novas hoje" },
+          { label: "Pendentes", value: encomendas.filter(e => e.estado === "pendente").length, icon: AlertCircle, color: T.orange, sub: "aguardam confirmação" },
+          { label: "Valor Pendente", value: `€${fmt(totalPendente)}`, icon: Euro, color: T.red, sub: "por processar" },
+        ].map((k, i) => {
+          const KIcon = k.icon;
+          return (
+            <div key={i} style={{ background: T.white, borderRadius: 14, padding: "18px 20px", border: `1px solid ${T.border}`, borderTop: `3px solid ${k.color}` }}>
+              <div style={{ width: 34, height: 34, borderRadius: 9, background: `${k.color}18`, display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 10 }}>
+                <KIcon size={16} color={k.color} />
+              </div>
+              <div style={{ fontSize: 22, fontWeight: 800, color: k.color, fontFamily: S.display }}>{k.value}</div>
+              <div style={{ fontSize: 11, color: T.muted, marginTop: 2 }}>{k.label}</div>
+              <div style={{ fontSize: 10, color: T.mutedL }}>{k.sub}</div>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Filtros + Pesquisa */}
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16, gap: 12 }}>
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+          {["todas", "pendente", "confirmada", "em_entrega", "entregue"].map(f => (
+            <button key={f} onClick={() => setFiltro(f)} style={{
+              padding: "7px 14px", borderRadius: 20, border: `1px solid ${filtro === f ? T.navy : T.border}`,
+              background: filtro === f ? T.navy : T.white, color: filtro === f ? "white" : T.muted,
+              fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: S.font,
+            }}>
+              {f === "todas" ? `Todas (${encomendas.length})` : estadoLabel[f]}
+              {f !== "todas" && ` (${encomendas.filter(e => e.estado === f).length})`}
+            </button>
+          ))}
         </div>
-        <div style={{ background: T.white, borderRadius:14, padding:"18px 20px", border:`1px solid ${T.border}`, borderTop:`3px solid ${T.red}` }}>
-          <div style={{ fontSize:22, fontWeight:800, color: T.red, fontFamily: S.display }}>€{fmt(HISTORICO.reduce((s,e) => s+e.total, 0))}</div>
-          <div style={{ fontSize:12, color: T.muted }}>Volume total comprado</div>
-        </div>
-        <div style={{ background: T.white, borderRadius:14, padding:"18px 20px", border:`1px solid ${T.border}`, borderTop:`3px solid ${T.green}` }}>
-          <div style={{ fontSize:22, fontWeight:800, color: T.green, fontFamily: S.display }}>€{fmt(CLIENT.saldo)}</div>
-          <div style={{ fontSize:12, color: T.muted }}>Saldo em aberto</div>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, background: T.white, border: `1px solid ${T.border}`, borderRadius: 9, padding: "8px 12px" }}>
+          <Search size={13} color={T.muted} />
+          <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Pesquisar cliente ou NIF..." style={{ border: "none", outline: "none", fontSize: 13, color: T.text, width: 200, background: "transparent", fontFamily: S.font }} />
+          {search && <X size={12} color={T.muted} style={{ cursor: "pointer" }} onClick={() => setSearch("")} />}
         </div>
       </div>
 
       {/* Lista */}
-      <div style={{ background: T.white, borderRadius:16, border:`1px solid ${T.border}`, overflow:"hidden" }}>
-        {HISTORICO.map((enc,i) => (
-          <div key={enc.id}>
-            <div onClick={() => setExpanded(expanded === enc.id ? null : enc.id)} style={{ display:"grid", gridTemplateColumns:"auto 1fr auto auto auto", gap:16, padding:"16px 20px", borderBottom:`1px solid ${T.border}`, alignItems:"center", cursor:"pointer" }}
-              onMouseEnter={e=>e.currentTarget.style.background=T.bg+"88"}
-              onMouseLeave={e=>e.currentTarget.style.background="transparent"}
-            >
-              <div style={{ width:40, height:40, borderRadius:10, background:`${estadoColor[enc.estado]}18`, display:"flex", alignItems:"center", justifyContent:"center" }}>
-                <CheckCircle size={18} color={estadoColor[enc.estado]} />
-              </div>
-              <div>
-                <div style={{ fontSize:14, fontWeight:700, color: T.navy }}>{enc.id}</div>
-                <div style={{ fontSize:12, color: T.muted }}>{enc.data} · {enc.items} artigos</div>
-              </div>
-              <Badge color={estadoColor[enc.estado]} small>{enc.estado}</Badge>
-              <div style={{ fontWeight:800, color: T.navy, fontSize:16, fontFamily: S.display }}>€{fmt(enc.total)}</div>
-              <ChevronDown size={16} color={T.muted} style={{ transform: expanded===enc.id ? "rotate(180deg)" : "none", transition:"transform .2s" }} />
-            </div>
-            {expanded === enc.id && (
-              <div style={{ background: T.bg, padding:"14px 20px 14px 76px", borderBottom:`1px solid ${T.border}` }}>
-                <div style={{ fontSize:11, fontWeight:700, color: T.muted, textTransform:"uppercase", letterSpacing:1, marginBottom:8, fontFamily:"monospace" }}>Artigos</div>
-                {enc.prods.map((pr,j) => (
-                  <div key={j} style={{ fontSize:13, color: T.text, padding:"4px 0", borderBottom: j<enc.prods.length-1 ? `1px solid ${T.border}` : "none" }}>{pr}</div>
-                ))}
-                <div style={{ marginTop:12, display:"flex", gap:8 }}>
-                  <Btn variant="secondary" size="sm" icon={FileText}>Ver Fatura</Btn>
-                  <Btn variant="secondary" size="sm" icon={repetido===enc.id ? CheckCircle : RefreshCw}
-                    onClick={() => handleRepetir(enc)}>
-                    {repetido===enc.id ? "Adicionado!" : "Repetir Encomenda"}
-                  </Btn>
+      {loading ? (
+        <div style={{ textAlign: "center", padding: "60px 20px", color: T.muted }}>
+          <RefreshCw size={32} color={T.border} style={{ margin: "0 auto 12px", display: "block", animation: "spin 1s linear infinite" }} />
+          <div>A carregar encomendas do Firebase...</div>
+        </div>
+      ) : filtered.length === 0 ? (
+        <div style={{ textAlign: "center", padding: "60px 20px", color: T.muted }}>
+          <ShoppingBag size={48} color={T.border} style={{ margin: "0 auto 12px", display: "block" }} />
+          <div style={{ fontSize: 16 }}>{encomendas.length === 0 ? "Ainda sem encomendas da loja." : "Nenhuma encomenda encontrada."}</div>
+          {encomendas.length === 0 && <div style={{ fontSize: 13, marginTop: 6 }}>Quando um cliente confirmar na loja B2B, aparece aqui automaticamente.</div>}
+        </div>
+      ) : (
+        <div style={{ background: T.white, borderRadius: 16, border: `1px solid ${T.border}`, overflow: "hidden" }}>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 130px 70px 110px 130px 110px 40px", padding: "10px 20px", background: T.bg, borderBottom: `1px solid ${T.border}` }}>
+            {["Cliente", "Data", "Arts.", "Total", "Estado", "Ação", ""].map(h => (
+              <div key={h} style={{ fontSize: 10, fontWeight: 700, color: T.muted, textTransform: "uppercase", letterSpacing: 1, fontFamily: "monospace" }}>{h}</div>
+            ))}
+          </div>
+
+          {filtered.map((enc, i) => {
+            const cor = estadoCor[enc.estado] || T.muted;
+            const isLast = i === filtered.length - 1;
+            const isExpanded = expanded === enc.id;
+            const proxEstado = estadoProx[enc.estado];
+
+            return (
+              <div key={enc.id}>
+                <div
+                  onClick={() => setExpanded(isExpanded ? null : enc.id)}
+                  style={{ display: "grid", gridTemplateColumns: "1fr 130px 70px 110px 130px 110px 40px", padding: "14px 20px", borderBottom: `1px solid ${T.border}`, alignItems: "center", cursor: "pointer", background: isExpanded ? `${T.navy}04` : "transparent", transition: "background .1s" }}
+                  onMouseEnter={e => { if (!isExpanded) e.currentTarget.style.background = T.bg + "88"; }}
+                  onMouseLeave={e => { if (!isExpanded) e.currentTarget.style.background = "transparent"; }}
+                >
+                  <div>
+                    <div style={{ fontSize: 14, fontWeight: 700, color: T.navy }}>{enc.cliente || "—"}</div>
+                    <div style={{ fontSize: 11, color: T.muted }}>NIF {enc.nif || "—"} · {enc.local || "—"}</div>
+                  </div>
+                  <div style={{ fontSize: 11, color: T.muted }}>{fmtDate(enc.criadoEm)}</div>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: T.navy }}>{(enc.items || []).length}</div>
+                  <div style={{ fontSize: 15, fontWeight: 800, color: T.navy, fontFamily: S.display }}>€{fmt(enc.total)}</div>
+                  <Badge color={cor} small>{estadoLabel[enc.estado] || enc.estado}</Badge>
+                  <div onClick={e => e.stopPropagation()}>
+                    {proxEstado ? (
+                      <button
+                        onClick={() => atualizarEstado(enc.id, proxEstado)}
+                        disabled={atualizando === enc.id}
+                        style={{
+                          padding: "5px 10px", borderRadius: 7, border: `1px solid ${estadoCor[proxEstado]}44`,
+                          background: `${estadoCor[proxEstado]}15`, color: estadoCor[proxEstado],
+                          fontSize: 11, fontWeight: 700, cursor: "pointer", fontFamily: S.font,
+                          opacity: atualizando === enc.id ? 0.5 : 1, whiteSpace: "nowrap",
+                        }}
+                      >
+                        {atualizando === enc.id ? "..." : `→ ${estadoLabel[proxEstado]}`}
+                      </button>
+                    ) : enc.estado === "entregue" ? (
+                      <CheckCircle size={18} color={T.green} />
+                    ) : null}
+                  </div>
+                  <ChevronDown size={15} color={T.muted} style={{ transform: isExpanded ? "rotate(180deg)" : "none", transition: "transform .2s" }} />
                 </div>
+
+                {isExpanded && (
+                  <div style={{ background: `${T.navy}03`, borderBottom: `1px solid ${T.border}`, padding: "20px 20px 20px 36px" }}>
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+                      <div>
+                        <div style={{ fontSize: 11, fontWeight: 700, color: T.muted, textTransform: "uppercase", letterSpacing: 1, marginBottom: 10, fontFamily: "monospace" }}>Artigos</div>
+                        <div style={{ background: T.white, borderRadius: 10, border: `1px solid ${T.border}`, overflow: "hidden" }}>
+                          {(enc.items || []).map((item, j) => (
+                            <div key={j} style={{ display: "grid", gridTemplateColumns: "1fr 50px 80px 80px", padding: "10px 14px", borderBottom: j < enc.items.length - 1 ? `1px solid ${T.border}` : "none", alignItems: "center" }}>
+                              <div>
+                                <div style={{ fontSize: 13, fontWeight: 600, color: T.navy }}>{item.nome}</div>
+                                <div style={{ fontSize: 10, color: T.muted, fontFamily: "monospace" }}>{item.ref} · {item.unidade}</div>
+                              </div>
+                              <div style={{ fontSize: 13, color: T.muted }}>×{item.qty}</div>
+                              <div style={{ fontSize: 11, color: T.muted }}>€{fmt(item.precoUnit)}/un</div>
+                              <div style={{ fontSize: 13, fontWeight: 700, color: T.navy }}>€{fmt(item.total)}</div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+
+                      <div>
+                        <div style={{ fontSize: 11, fontWeight: 700, color: T.muted, textTransform: "uppercase", letterSpacing: 1, marginBottom: 10, fontFamily: "monospace" }}>Resumo</div>
+                        <div style={{ background: T.white, borderRadius: 10, border: `1px solid ${T.border}`, padding: "14px 16px", marginBottom: 12 }}>
+                          {[["Subtotal s/ IVA", `€${fmt(enc.subtotal)}`], ["IVA", `€${fmt(enc.iva)}`]].map(([l, v]) => (
+                            <div key={l} style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}>
+                              <span style={{ fontSize: 12, color: T.muted }}>{l}</span>
+                              <span style={{ fontSize: 12, color: T.navy }}>{v}</span>
+                            </div>
+                          ))}
+                          <div style={{ display: "flex", justifyContent: "space-between", paddingTop: 10, borderTop: `2px solid ${T.border}`, marginTop: 4 }}>
+                            <span style={{ fontSize: 14, fontWeight: 700, color: T.navy }}>Total c/ IVA</span>
+                            <span style={{ fontSize: 16, fontWeight: 800, color: T.red, fontFamily: S.display }}>€{fmt(enc.total)}</span>
+                          </div>
+                        </div>
+                        <div style={{ background: T.white, borderRadius: 10, border: `1px solid ${T.border}`, padding: "12px 14px", marginBottom: 12 }}>
+                          <div style={{ fontSize: 12, color: T.muted }}><strong style={{ color: T.navy }}>Comercial:</strong> {enc.comercial || "—"}</div>
+                          {enc.observacoes && <div style={{ fontSize: 12, color: T.muted, marginTop: 6, paddingTop: 6, borderTop: `1px solid ${T.border}` }}><strong style={{ color: T.navy }}>Obs:</strong> {enc.observacoes}</div>}
+                        </div>
+                        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                          {proxEstado && (
+                            <Btn variant="green" size="sm" icon={Check} onClick={() => atualizarEstado(enc.id, proxEstado)} disabled={atualizando === enc.id}>
+                              → {estadoLabel[proxEstado]}
+                            </Btn>
+                          )}
+                          {enc.estado !== "cancelada" && enc.estado !== "entregue" && (
+                            <Btn variant="secondary" size="sm" icon={X} onClick={() => atualizarEstado(enc.id, "cancelada")}>Cancelar</Btn>
+                          )}
+                          <Btn variant="secondary" size="sm" icon={Mail} onClick={() => window.open(`mailto:geral@empro.pt?subject=Encomenda ${enc.cliente}`)}>Email</Btn>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
-            )}
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ══════════════════════════════════
+   ECRÃ: PROMOÇÕES
+══════════════════════════════════ */
+const PROMOS_INIT = [
+  { id: 1, titulo: "Pack Verão Cerveja", desc: "Compre 5 caixas, leve 6", valor: "17% OFF", ativa: true, produto: "Cerveja", inicio: "01/06/2025", fim: "31/08/2025" },
+  { id: 2, titulo: "Promoção Red Bull", desc: "Encomendas +10cx: €0.20/cx desconto", valor: "€0.20/cx", ativa: true, produto: "Energéticas", inicio: "01/05/2025", fim: "30/06/2025" },
+  { id: 3, titulo: "Vinho Verde Quintas", desc: "Seleção Vinhos Verdes +50un", valor: "10% OFF", ativa: false, produto: "Vinho", inicio: "15/03/2025", fim: "30/04/2025" },
+];
+
+function EcrãPromoções() {
+  const [promos, setPromos] = useState(PROMOS_INIT);
+  const [editando, setEditando] = useState(null);
+  const [form, setForm] = useState({});
+  const [mostraForm, setMostraForm] = useState(false);
+
+  const toggleAtiva = (id) => setPromos(p => p.map(x => x.id === id ? { ...x, ativa: !x.ativa } : x));
+  const apagar = (id) => setPromos(p => p.filter(x => x.id !== id));
+  const nova = () => { setForm({ titulo: "", desc: "", valor: "", produto: "", inicio: "", fim: "", ativa: true }); setEditando("new"); setMostraForm(true); };
+  const editar = (p) => { setForm({ ...p }); setEditando(p.id); setMostraForm(true); };
+  const guardar = () => {
+    if (editando === "new") setPromos(p => [...p, { ...form, id: Date.now() }]);
+    else setPromos(p => p.map(x => x.id === editando ? { ...form, id: editando } : x));
+    setMostraForm(false);
+  };
+
+  return (
+    <div>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24 }}>
+        <div>
+          <div style={{ fontSize: 11, color: T.muted, letterSpacing: 2, textTransform: "uppercase", fontFamily: "monospace", marginBottom: 4 }}>Loja B2B</div>
+          <h1 style={{ margin: 0, fontSize: 28, fontWeight: 700, color: T.navy, fontFamily: S.display }}>Promoções</h1>
+        </div>
+        <Btn icon={Plus} onClick={nova}>Nova Promoção</Btn>
+      </div>
+
+      {mostraForm && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 200 }}>
+          <div style={{ background: T.white, borderRadius: 20, padding: 36, width: 480, boxShadow: "0 32px 80px rgba(0,0,0,.3)" }}>
+            <div style={{ fontSize: 20, fontWeight: 700, color: T.navy, fontFamily: S.display, marginBottom: 24 }}>{editando === "new" ? "Nova Promoção" : "Editar Promoção"}</div>
+            {[
+              { label: "Título", key: "titulo", ph: "Ex: Pack Verão Cerveja" },
+              { label: "Descrição", key: "desc", ph: "Ex: Compre 5, leve 6" },
+              { label: "Valor destaque", key: "valor", ph: "Ex: 17% OFF" },
+              { label: "Produto / Família", key: "produto", ph: "Ex: Cerveja" },
+              { label: "Data início", key: "inicio", ph: "DD/MM/AAAA" },
+              { label: "Data fim", key: "fim", ph: "DD/MM/AAAA" },
+            ].map(f => (
+              <div key={f.key} style={{ marginBottom: 14 }}>
+                <label style={{ fontSize: 11, fontWeight: 700, color: T.muted, textTransform: "uppercase", letterSpacing: 1, display: "block", marginBottom: 5, fontFamily: "monospace" }}>{f.label}</label>
+                <input value={form[f.key] || ""} onChange={e => setForm(x => ({ ...x, [f.key]: e.target.value }))} placeholder={f.ph}
+                  style={{ width: "100%", padding: "10px 12px", border: `1px solid ${T.border}`, borderRadius: 9, fontSize: 13, color: T.text, outline: "none", fontFamily: S.font, boxSizing: "border-box" }} />
+              </div>
+            ))}
+            <div style={{ display: "flex", gap: 10, marginTop: 8 }}>
+              <Btn onClick={guardar} full icon={Check}>Guardar</Btn>
+              <Btn variant="secondary" onClick={() => setMostraForm(false)} full icon={X}>Cancelar</Btn>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(320px,1fr))", gap: 14 }}>
+        {promos.map(p => (
+          <div key={p.id} style={{ background: T.white, borderRadius: 16, border: `1px solid ${T.border}`, overflow: "hidden", opacity: p.ativa ? 1 : 0.6 }}>
+            <div style={{ background: p.ativa ? `linear-gradient(135deg,${T.navy},${T.navyL})` : T.bg, padding: "16px 18px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <span style={{ background: p.ativa ? `${T.red}cc` : T.border, color: "white", fontWeight: 800, fontSize: 13, padding: "4px 12px", borderRadius: 20 }}>{p.valor}</span>
+              <button onClick={() => toggleAtiva(p.id)} style={{ background: p.ativa ? `${T.green}33` : `${T.muted}22`, border: "none", borderRadius: 20, padding: "4px 12px", cursor: "pointer", fontSize: 12, fontWeight: 700, color: p.ativa ? T.green : T.muted, fontFamily: S.font }}>
+                {p.ativa ? "● Ativa" : "○ Inativa"}
+              </button>
+            </div>
+            <div style={{ padding: "16px 18px" }}>
+              <div style={{ fontSize: 16, fontWeight: 700, color: T.navy, fontFamily: S.display, marginBottom: 4 }}>{p.titulo}</div>
+              <div style={{ fontSize: 13, color: T.muted, marginBottom: 12 }}>{p.desc}</div>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 14 }}>
+                <Badge color={T.blue} small>{p.produto}</Badge>
+                <Badge color={T.muted} small>{p.inicio} → {p.fim}</Badge>
+              </div>
+              <div style={{ display: "flex", gap: 8 }}>
+                <Btn variant="secondary" size="sm" icon={Edit2} onClick={() => editar(p)}>Editar</Btn>
+                <Btn variant="secondary" size="sm" icon={Trash2} onClick={() => apagar(p.id)}>Apagar</Btn>
+              </div>
+            </div>
           </div>
         ))}
       </div>
@@ -739,680 +417,423 @@ function EcrãHistorico({ onRepetir, onNav }) {
   );
 }
 
-/* ── ECRÃ: Faturas ── */
-function EcrãFaturas() {
-  const [filtro, setFiltro] = useState("todas");
-  const [downloading, setDownloading] = useState(null);
+/* ══════════════════════════════════
+   ECRÃ: PRODUTOS (Firebase + Storage)
+══════════════════════════════════ */
+const FAMILIAS = ["Cerveja", "Refrigerantes", "Vinho", "Espumante", "Água", "Energéticas", "Destilados", "Outros"];
 
-  const totalDivida  = FATURAS.filter(f => f.estado !== "paga").reduce((s,f) => s+f.total, 0);
-  const totalVencido = FATURAS.filter(f => f.vencida).reduce((s,f) => s+f.total, 0);
-  const plafond      = CLIENT.limite - CLIENT.saldo;
-  const pctCredito   = Math.round(CLIENT.saldo / CLIENT.limite * 100);
+const PRODUTO_VAZIO = { nome: "", ref: "", familia: "Cerveja", preco: "", precoUnit: "", unidade: "cx", stock: "", ativo: true, descricao: "", foto: "" };
 
-  const filtered = FATURAS.filter(f => {
-    if (filtro === "pendentes") return f.estado === "pendente";
-    if (filtro === "vencidas")  return f.estado === "vencida";
-    if (filtro === "pagas")     return f.estado === "paga";
-    return true;
-  });
+function ModalProduto({ produto, onClose, onSave }) {
+  const [form, setForm] = useState(produto || PRODUTO_VAZIO);
+  const [fotoFile, setFotoFile] = useState(null);
+  const [fotoPreview, setFotoPreview] = useState(produto?.foto || null);
+  const [saving, setSaving] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState("");
 
-  const estadoCor  = { pendente: T.orange, vencida: T.red, paga: T.green };
-  const estadoIcon = { pendente: Clock, vencida: AlertCircle, paga: CheckCircle };
+  const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
 
-  const handleDownload = (fatura) => {
-    setDownloading(fatura.id);
-    // Gera PDF simulado como blob de texto
-    const conteudo = `EMPRO — EMPRODALBE, LDA
-NIF: 501 234 567
-Estrada Nacional 125, Loulé, Algarve
-Tel: +351 289 400 450 | geral@empro.pt
-${"─".repeat(50)}
-
-FATURA: ${fatura.id}
-Data:   ${fatura.data}
-Venc.:  ${fatura.venc}
-${"─".repeat(50)}
-
-Cliente: ${CLIENT.name}
-NIF:     ${CLIENT.nif}
-Morada:  ${CLIENT.local}
-${"─".repeat(50)}
-
-Encomenda: ${fatura.enc}
-
-Valor Líquido:  €${fmt(fatura.liquido)}
-IVA (23%):      €${fmt(fatura.iva)}
-─────────────────────────────────────
-TOTAL:          €${fmt(fatura.total)}
-${"─".repeat(50)}
-
-Estado: ${fatura.estado.toUpperCase()}
-${"─".repeat(50)}
-
-Obrigado pela sua preferência.
-EMPRO — Distribuidora de Bebidas HoReCa
-    `;
-    setTimeout(() => {
-      const blob = new Blob([conteudo], { type: "text/plain;charset=utf-8" });
-      const url  = URL.createObjectURL(blob);
-      const a    = document.createElement("a");
-      a.href     = url;
-      a.download = `${fatura.id.replace(" ","-").replace("/","-")}.txt`;
-      a.click();
-      URL.revokeObjectURL(url);
-      setDownloading(null);
-    }, 800);
+  const handleFoto = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    setFotoFile(file);
+    setFotoPreview(URL.createObjectURL(file));
   };
 
-  const handleDownloadAll = () => {
-    filtered.forEach((f, i) => setTimeout(() => handleDownload(f), i * 400));
+  const handleSave = async () => {
+    if (!form.nome || !form.ref || !form.preco) return alert("Preencha Nome, Referência e Preço.");
+    setSaving(true);
+    try {
+      let fotoUrl = form.foto || "";
+      if (fotoFile) {
+        setUploadProgress("A carregar foto...");
+        const fileRef = storageRef(storage, `produtos/${Date.now()}_${fotoFile.name}`);
+        await uploadBytes(fileRef, fotoFile);
+        fotoUrl = await getDownloadURL(fileRef);
+        setUploadProgress("Foto carregada!");
+      }
+      const dados = {
+        nome: form.nome, ref: form.ref, familia: form.familia,
+        preco: parseFloat(form.preco) || 0,
+        precoUnit: parseFloat(form.precoUnit) || 0,
+        unidade: form.unidade || "cx",
+        stock: parseInt(form.stock) || 0,
+        ativo: form.ativo, descricao: form.descricao || "",
+        foto: fotoUrl,
+        updatedAt: serverTimestamp(),
+      };
+      if (produto?.firestoreId) {
+        await updateDoc(doc(db, "produtos", produto.firestoreId), dados);
+      } else {
+        await addDoc(collection(db, "produtos"), { ...dados, criadoEm: serverTimestamp() });
+      }
+      onSave();
+    } catch (e) {
+      console.error(e);
+      alert("Erro ao guardar: " + e.message);
+    } finally {
+      setSaving(false);
+      setUploadProgress("");
+    }
   };
+
+  const inp = (label, key, type = "text", placeholder = "") => (
+    <div style={{ marginBottom: 14 }}>
+      <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: T.muted, textTransform: "uppercase", letterSpacing: 1, marginBottom: 5, fontFamily: "monospace" }}>{label}</label>
+      <input type={type} value={form[key]} onChange={e => set(key, e.target.value)} placeholder={placeholder}
+        style={{ width: "100%", padding: "9px 12px", border: `1px solid ${T.border}`, borderRadius: 8, fontSize: 13, fontFamily: S.font, color: T.text, outline: "none", boxSizing: "border-box" }} />
+    </div>
+  );
+
+  return (
+    <div style={{ position: "fixed", inset: 0, background: "#00000066", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center" }}>
+      <div style={{ background: T.white, borderRadius: 16, padding: 28, width: 540, maxHeight: "90vh", overflowY: "auto", boxShadow: "0 20px 60px #0003" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 22 }}>
+          <h2 style={{ margin: 0, fontSize: 20, fontWeight: 700, color: T.navy, fontFamily: S.display }}>{produto?.firestoreId ? "Editar Produto" : "Novo Produto"}</h2>
+          <button onClick={onClose} style={{ background: "none", border: "none", cursor: "pointer", color: T.muted }}><X size={20} /></button>
+        </div>
+
+        {/* Foto */}
+        <div style={{ marginBottom: 18 }}>
+          <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: T.muted, textTransform: "uppercase", letterSpacing: 1, marginBottom: 8, fontFamily: "monospace" }}>Foto do Produto</label>
+          <div style={{ display: "flex", gap: 14, alignItems: "center" }}>
+            <div style={{ width: 90, height: 90, borderRadius: 12, border: `2px dashed ${T.border}`, display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden", background: T.bg, flexShrink: 0 }}>
+              {fotoPreview
+                ? <img src={fotoPreview} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                : <Package size={28} color={T.mutedL} />}
+            </div>
+            <div>
+              <label style={{ display: "inline-flex", alignItems: "center", gap: 7, background: T.navy, color: "white", padding: "9px 16px", borderRadius: 8, cursor: "pointer", fontSize: 13, fontWeight: 600, fontFamily: S.font }}>
+                <Download size={13} /> Escolher Foto
+                <input type="file" accept="image/*" onChange={handleFoto} style={{ display: "none" }} />
+              </label>
+              <div style={{ fontSize: 11, color: T.muted, marginTop: 6 }}>JPG, PNG ou WebP · Máx. 5MB</div>
+              {uploadProgress && <div style={{ fontSize: 11, color: T.green, marginTop: 4, fontWeight: 600 }}>{uploadProgress}</div>}
+            </div>
+          </div>
+        </div>
+
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0 16px" }}>
+          <div style={{ gridColumn: "1 / -1" }}>{inp("Nome do Produto", "nome", "text", "Ex: Sagres 33cl NR")}</div>
+          {inp("Referência", "ref", "text", "Ex: SAG-33NR")}
+          <div style={{ marginBottom: 14 }}>
+            <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: T.muted, textTransform: "uppercase", letterSpacing: 1, marginBottom: 5, fontFamily: "monospace" }}>Família</label>
+            <select value={form.familia} onChange={e => set("familia", e.target.value)}
+              style={{ width: "100%", padding: "9px 12px", border: `1px solid ${T.border}`, borderRadius: 8, fontSize: 13, fontFamily: S.font, color: T.text, background: "white" }}>
+              {FAMILIAS.map(f => <option key={f}>{f}</option>)}
+            </select>
+          </div>
+          {inp("Preço cx/un (€)", "preco", "number", "0.00")}
+          {inp("Preço unitário (€)", "precoUnit", "number", "0.00")}
+          {inp("Unidade", "unidade", "text", "cx 24un")}
+          {inp("Stock", "stock", "number", "0")}
+          <div style={{ gridColumn: "1 / -1", marginBottom: 14 }}>
+            <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: T.muted, textTransform: "uppercase", letterSpacing: 1, marginBottom: 5, fontFamily: "monospace" }}>Descrição (opcional)</label>
+            <textarea value={form.descricao} onChange={e => set("descricao", e.target.value)} rows={2} placeholder="Breve descrição do produto..."
+              style={{ width: "100%", padding: "9px 12px", border: `1px solid ${T.border}`, borderRadius: 8, fontSize: 13, fontFamily: S.font, color: T.text, resize: "vertical", boxSizing: "border-box" }} />
+          </div>
+          <div style={{ gridColumn: "1 / -1", display: "flex", alignItems: "center", gap: 10, marginBottom: 20 }}>
+            <input type="checkbox" id="ativo" checked={form.ativo} onChange={e => set("ativo", e.target.checked)} style={{ width: 16, height: 16, cursor: "pointer" }} />
+            <label htmlFor="ativo" style={{ fontSize: 13, color: T.text, fontFamily: S.font, cursor: "pointer" }}>Produto ativo (visível na loja e app)</label>
+          </div>
+        </div>
+
+        <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
+          <Btn variant="secondary" onClick={onClose}>Cancelar</Btn>
+          <Btn onClick={handleSave} disabled={saving}>{saving ? "A guardar..." : "Guardar Produto"}</Btn>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function EcrãProdutos() {
+  const [produtos, setProdutos] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState("");
+  const [modal, setModal] = useState(null); // null | "novo" | produto
+
+  useEffect(() => {
+    const q = query(collection(db, "produtos"), orderBy("nome"));
+    const unsub = onSnapshot(q, snap => {
+      setProdutos(snap.docs.map(d => ({ firestoreId: d.id, ...d.data() })));
+      setLoading(false);
+    }, () => setLoading(false));
+    return unsub;
+  }, []);
+
+  const apagar = async (p) => {
+    if (!window.confirm(`Apagar "${p.nome}"?`)) return;
+    await deleteDoc(doc(db, "produtos", p.firestoreId));
+  };
+
+  const filtered = produtos.filter(p =>
+    p.nome?.toLowerCase().includes(search.toLowerCase()) ||
+    p.ref?.toLowerCase().includes(search.toLowerCase())
+  );
 
   return (
     <div>
-      {/* Header */}
-      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:24 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24 }}>
         <div>
-          <div style={{ fontSize:11, color:T.muted, letterSpacing:2, textTransform:"uppercase", fontFamily:"monospace", marginBottom:4 }}>Conta Corrente</div>
-          <h1 style={{ margin:0, fontSize:28, fontWeight:700, color:T.navy, fontFamily:S.display }}>Faturas</h1>
+          <div style={{ fontSize: 11, color: T.muted, letterSpacing: 2, textTransform: "uppercase", fontFamily: "monospace", marginBottom: 4 }}>Catálogo</div>
+          <h1 style={{ margin: 0, fontSize: 28, fontWeight: 700, color: T.navy, fontFamily: S.display }}>Produtos</h1>
         </div>
-        <Btn variant="secondary" size="sm" icon={Download} onClick={handleDownloadAll}>
-          Descarregar Selecionadas
-        </Btn>
-      </div>
-
-      {/* KPIs financeiros */}
-      <div style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:14, marginBottom:28 }}>
-
-        {/* Dívida total */}
-        <div style={{ background:T.white, borderRadius:16, padding:"22px 24px", border:`1px solid ${T.border}`, borderTop:`3px solid ${T.navy}` }}>
-          <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:14 }}>
-            <div style={{ width:36, height:36, borderRadius:10, background:`${T.navy}18`, display:"flex", alignItems:"center", justifyContent:"center" }}>
-              <Receipt size={18} color={T.navy} />
-            </div>
-            <span style={{ fontSize:12, color:T.muted, fontWeight:600, textTransform:"uppercase", letterSpacing:1, fontFamily:"monospace" }}>Dívida Total</span>
+        <div style={{ display: "flex", gap: 10 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, background: T.white, border: `1px solid ${T.border}`, borderRadius: 9, padding: "8px 12px" }}>
+            <Search size={13} color={T.muted} />
+            <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Pesquisar..." style={{ border: "none", outline: "none", fontSize: 13, color: T.text, width: 160, background: "transparent", fontFamily: S.font }} />
           </div>
-          <div style={{ fontSize:28, fontWeight:800, color:T.navy, fontFamily:S.display, marginBottom:4 }}>€{fmt(totalDivida)}</div>
-          <div style={{ fontSize:12, color:T.muted }}>{FATURAS.filter(f=>f.estado!=="paga").length} faturas por liquidar</div>
-        </div>
-
-        {/* Valor vencido */}
-        <div style={{ background:T.white, borderRadius:16, padding:"22px 24px", border:`1px solid ${totalVencido>0?T.red:T.border}`, borderTop:`3px solid ${totalVencido>0?T.red:T.green}` }}>
-          <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:14 }}>
-            <div style={{ width:36, height:36, borderRadius:10, background:`${totalVencido>0?T.red:T.green}18`, display:"flex", alignItems:"center", justifyContent:"center" }}>
-              <CalendarClock size={18} color={totalVencido>0?T.red:T.green} />
-            </div>
-            <span style={{ fontSize:12, color:T.muted, fontWeight:600, textTransform:"uppercase", letterSpacing:1, fontFamily:"monospace" }}>Valor Vencido</span>
-          </div>
-          <div style={{ fontSize:28, fontWeight:800, color:totalVencido>0?T.red:T.green, fontFamily:S.display, marginBottom:4 }}>
-            €{fmt(totalVencido)}
-          </div>
-          {totalVencido > 0
-            ? <div style={{ display:"flex", alignItems:"center", gap:5, fontSize:12, color:T.red }}><AlertCircle size={12} />Pagamento em atraso</div>
-            : <div style={{ display:"flex", alignItems:"center", gap:5, fontSize:12, color:T.green }}><CheckCircle size={12} />Sem valores em atraso</div>
-          }
-        </div>
-
-        {/* Plafond disponível */}
-        <div style={{ background:T.white, borderRadius:16, padding:"22px 24px", border:`1px solid ${T.border}`, borderTop:`3px solid ${T.green}` }}>
-          <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:14 }}>
-            <div style={{ width:36, height:36, borderRadius:10, background:`${T.green}18`, display:"flex", alignItems:"center", justifyContent:"center" }}>
-              <CreditCard size={18} color={T.green} />
-            </div>
-            <span style={{ fontSize:12, color:T.muted, fontWeight:600, textTransform:"uppercase", letterSpacing:1, fontFamily:"monospace" }}>Plafond Disponível</span>
-          </div>
-          <div style={{ fontSize:28, fontWeight:800, color:T.green, fontFamily:S.display, marginBottom:8 }}>€{fmt(plafond)}</div>
-          <div style={{ height:6, background:T.bg, borderRadius:3, marginBottom:4 }}>
-            <div style={{ width:`${pctCredito}%`, height:"100%", background: pctCredito>80?T.red:pctCredito>50?T.orange:T.green, borderRadius:3, transition:"width .5s" }} />
-          </div>
-          <div style={{ display:"flex", justifyContent:"space-between", fontSize:11, color:T.muted }}>
-            <span>Utilizado: €{fmt(CLIENT.saldo)}</span>
-            <span>Limite: €{fmt(CLIENT.limite)}</span>
-          </div>
+          <Btn icon={Plus} onClick={() => setModal("novo")}>Novo Produto</Btn>
         </div>
       </div>
 
-      {/* Filtros */}
-      <div style={{ display:"flex", gap:8, marginBottom:16 }}>
-        {[
-          { key:"todas",     label:"Todas",     count: FATURAS.length },
-          { key:"pendentes", label:"Pendentes", count: FATURAS.filter(f=>f.estado==="pendente").length },
-          { key:"vencidas",  label:"Vencidas",  count: FATURAS.filter(f=>f.estado==="vencida").length },
-          { key:"pagas",     label:"Pagas",     count: FATURAS.filter(f=>f.estado==="paga").length },
-        ].map(f => (
-          <button key={f.key} onClick={() => setFiltro(f.key)} style={{
-            padding:"8px 16px", borderRadius:20, border:`1px solid ${filtro===f.key?T.navy:T.border}`,
-            background: filtro===f.key?T.navy:T.white, color: filtro===f.key?"white":T.muted,
-            fontSize:13, fontWeight: filtro===f.key?700:400, cursor:"pointer", fontFamily:S.font,
-          }}>
-            {f.label} <span style={{ opacity:0.7 }}>({f.count})</span>
-          </button>
-        ))}
-      </div>
-
-      {/* Tabela */}
-      <div style={{ background:T.white, borderRadius:16, border:`1px solid ${T.border}`, overflow:"hidden" }}>
-        {/* Cabeçalho */}
-        <div style={{ display:"grid", gridTemplateColumns:"1.2fr 1fr 90px 90px 110px 90px 80px", gap:0, padding:"10px 20px", background:T.bg, borderBottom:`1px solid ${T.border}` }}>
-          {["Fatura","Encomenda","Data","Vencimento","Total c/ IVA","Estado",""].map(h => (
-            <div key={h} style={{ fontSize:10, fontWeight:700, color:T.muted, textTransform:"uppercase", letterSpacing:1, fontFamily:"monospace" }}>{h}</div>
-          ))}
+      {loading ? (
+        <div style={{ textAlign: "center", padding: 60, color: T.muted }}>A carregar produtos...</div>
+      ) : filtered.length === 0 ? (
+        <div style={{ textAlign: "center", padding: 60, background: T.white, borderRadius: 16, border: `1px solid ${T.border}` }}>
+          <Package size={40} color={T.mutedL} style={{ marginBottom: 12 }} />
+          <div style={{ fontSize: 16, fontWeight: 700, color: T.navy, marginBottom: 6 }}>Sem produtos</div>
+          <div style={{ fontSize: 13, color: T.muted, marginBottom: 18 }}>Adicione o primeiro produto ao catálogo</div>
+          <Btn icon={Plus} onClick={() => setModal("novo")}>Adicionar Produto</Btn>
         </div>
-
-        {filtered.map((f, i) => {
-          const Icon = estadoIcon[f.estado];
-          const cor  = estadoCor[f.estado];
-          const isLast = i === filtered.length - 1;
-          return (
-            <div key={f.id} style={{ display:"grid", gridTemplateColumns:"1.2fr 1fr 90px 90px 110px 90px 80px", gap:0, padding:"14px 20px", borderBottom: isLast?"none":`1px solid ${T.border}`, alignItems:"center", background: f.vencida ? `${T.red}04` : "transparent" }}
-              onMouseEnter={e=>e.currentTarget.style.background=f.vencida?`${T.red}08`:T.bg+"88"}
-              onMouseLeave={e=>e.currentTarget.style.background=f.vencida?`${T.red}04`:"transparent"}
-            >
-              {/* Fatura */}
-              <div style={{ display:"flex", alignItems:"center", gap:10 }}>
-                <div style={{ width:34, height:34, borderRadius:8, background:`${cor}18`, display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>
-                  <Icon size={16} color={cor} />
-                </div>
-                <div style={{ fontSize:14, fontWeight:700, color:T.navy, fontFamily:S.display }}>{f.id}</div>
-              </div>
-
-              {/* Encomenda */}
-              <div style={{ fontSize:12, color:T.muted, fontFamily:"monospace" }}>{f.enc}</div>
-
-              {/* Data emissão */}
-              <div style={{ fontSize:12, color:T.muted }}>{f.data}</div>
-
-              {/* Vencimento */}
-              <div style={{ fontSize:12, color: f.vencida?T.red:T.text, fontWeight: f.vencida?700:400 }}>{f.venc}</div>
-
-              {/* Total */}
-              <div style={{ fontWeight:800, color:T.navy, fontSize:15, fontFamily:S.display }}>€{fmt(f.total)}</div>
-
-              {/* Estado */}
-              <div>
-                <span style={{ background:`${cor}18`, color:cor, padding:"4px 10px", borderRadius:20, fontSize:11, fontWeight:700, fontFamily:"monospace" }}>
-                  {f.estado}
+      ) : (
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: 16 }}>
+          {filtered.map(p => (
+            <div key={p.firestoreId} style={{ background: T.white, borderRadius: 14, border: `1px solid ${T.border}`, overflow: "hidden", display: "flex", flexDirection: "column" }}>
+              {/* Foto */}
+              <div style={{ height: 160, background: T.bg, display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden", position: "relative" }}>
+                {p.foto
+                  ? <img src={p.foto} alt={p.nome} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                  : <Package size={48} color={T.mutedL} />}
+                <span style={{ position: "absolute", top: 10, right: 10, background: p.ativo ? T.green : T.muted, color: "white", fontSize: 10, fontWeight: 700, padding: "3px 8px", borderRadius: 20, fontFamily: "monospace" }}>
+                  {p.ativo ? "ATIVO" : "INATIVO"}
                 </span>
               </div>
-
-              {/* Download */}
-              <div>
-                <button onClick={() => handleDownload(f)} style={{ display:"flex", alignItems:"center", gap:5, padding:"6px 12px", borderRadius:8, border:`1px solid ${T.border}`, background: downloading===f.id?T.navy:T.white, color: downloading===f.id?"white":T.navy, fontSize:12, fontWeight:600, cursor:"pointer", transition:"all .2s", fontFamily:S.font }}>
-                  <Download size={12} />
-                  {downloading===f.id ? "..." : "PDF"}
-                </button>
+              {/* Info */}
+              <div style={{ padding: 14, flex: 1, display: "flex", flexDirection: "column", gap: 4 }}>
+                <div style={{ fontSize: 15, fontWeight: 700, color: T.navy }}>{p.nome}</div>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <span style={{ fontSize: 11, color: T.muted, fontFamily: "monospace" }}>{p.ref}</span>
+                  <Badge color={T.blue} small>{p.familia}</Badge>
+                </div>
+                <div style={{ display: "flex", justifyContent: "space-between", marginTop: 6 }}>
+                  <div>
+                    <div style={{ fontSize: 18, fontWeight: 700, color: T.red }}>€{fmt(p.preco)}</div>
+                    <div style={{ fontSize: 11, color: T.muted }}>{p.unidade || "cx"}</div>
+                  </div>
+                  <div style={{ textAlign: "right" }}>
+                    <div style={{ fontSize: 14, fontWeight: 700, color: p.stock < 50 ? T.red : T.green }}>{p.stock || 0} un</div>
+                    <div style={{ fontSize: 11, color: T.muted }}>stock</div>
+                  </div>
+                </div>
+                <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
+                  <Btn variant="secondary" size="sm" icon={Edit2} full onClick={() => setModal(p)}>Editar</Btn>
+                  <button onClick={() => apagar(p)} style={{ background: "none", border: `1px solid ${T.border}`, borderRadius: 8, padding: "7px 10px", cursor: "pointer", color: T.red, display: "flex", alignItems: "center" }}><Trash2 size={13} /></button>
+                </div>
               </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {modal && (
+        <ModalProduto
+          produto={modal === "novo" ? null : modal}
+          onClose={() => setModal(null)}
+          onSave={() => setModal(null)}
+        />
+      )}
+    </div>
+  );
+}
+
+/* ══════════════════════════════════
+   ECRÃ: CLIENTES
+══════════════════════════════════ */
+const CLIENTES = [
+  { id: 1, nome: "Restaurante Marina", nif: "501234567", local: "Albufeira", tipo: "A", comercial: "João Ferreira", saldo: 2740.80, limite: 8000, ativo: true },
+  { id: 2, nome: "Snack Bar Atlântico", nif: "502345678", local: "Quarteira", tipo: "B", comercial: "Daniela Freitas", saldo: 890.00, limite: 4000, ativo: true },
+  { id: 3, nome: "Hotel Algarve Palace", nif: "503456789", local: "Faro", tipo: "A", comercial: "Rui Inácio", saldo: 0, limite: 15000, ativo: true },
+  { id: 4, nome: "Tasca do Zé", nif: "504567890", local: "Loulé", tipo: "C", comercial: "João Ferreira", saldo: 1200.00, limite: 2000, ativo: false },
+];
+
+function EcrãClientes() {
+  return (
+    <div>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24 }}>
+        <div>
+          <div style={{ fontSize: 11, color: T.muted, letterSpacing: 2, textTransform: "uppercase", fontFamily: "monospace", marginBottom: 4 }}>Carteira</div>
+          <h1 style={{ margin: 0, fontSize: 28, fontWeight: 700, color: T.navy, fontFamily: S.display }}>Clientes</h1>
+        </div>
+        <Btn icon={Plus}>Novo Cliente</Btn>
+      </div>
+      <div style={{ background: T.white, borderRadius: 16, border: `1px solid ${T.border}`, overflow: "hidden" }}>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 80px 120px 110px 100px 80px 60px", padding: "10px 20px", background: T.bg, borderBottom: `1px solid ${T.border}` }}>
+          {["Cliente", "Tipo", "Comercial", "Saldo", "Limite", "Estado", ""].map(h => (
+            <div key={h} style={{ fontSize: 10, fontWeight: 700, color: T.muted, textTransform: "uppercase", letterSpacing: 1, fontFamily: "monospace" }}>{h}</div>
+          ))}
+        </div>
+        {CLIENTES.map((c, i) => {
+          const pct = Math.round(c.saldo / c.limite * 100);
+          return (
+            <div key={c.id} style={{ display: "grid", gridTemplateColumns: "1fr 80px 120px 110px 100px 80px 60px", padding: "14px 20px", borderBottom: i < CLIENTES.length - 1 ? `1px solid ${T.border}` : "none", alignItems: "center" }}
+              onMouseEnter={e => e.currentTarget.style.background = T.bg + "88"}
+              onMouseLeave={e => e.currentTarget.style.background = "transparent"}
+            >
+              <div>
+                <div style={{ fontSize: 14, fontWeight: 700, color: T.navy }}>{c.nome}</div>
+                <div style={{ fontSize: 11, color: T.muted }}>{c.local} · NIF {c.nif}</div>
+              </div>
+              <Badge color={T.orange} small>Tipo {c.tipo}</Badge>
+              <div style={{ fontSize: 12, color: T.muted }}>{c.comercial}</div>
+              <div>
+                <div style={{ fontSize: 13, fontWeight: 700, color: c.saldo > 0 ? T.red : T.green }}>€{fmt(c.saldo)}</div>
+                <div style={{ height: 3, background: T.bg, borderRadius: 2, marginTop: 3, width: 60 }}>
+                  <div style={{ width: `${pct}%`, height: "100%", background: pct > 70 ? T.red : T.green, borderRadius: 2 }} />
+                </div>
+              </div>
+              <div style={{ fontSize: 13, color: T.muted }}>€{fmt(c.limite)}</div>
+              <Badge color={c.ativo ? T.green : T.muted} small>{c.ativo ? "Ativo" : "Inativo"}</Badge>
+              <Btn variant="secondary" size="sm" icon={Eye}>Ver</Btn>
             </div>
           );
         })}
       </div>
-
-      {/* Nota */}
-      <div style={{ marginTop:12, fontSize:12, color:T.muted, display:"flex", alignItems:"center", gap:6 }}>
-        <AlertCircle size={13} />
-        Para questões sobre faturas contacte: <strong style={{ color:T.navy }}>geral@empro.pt</strong> ou <strong style={{ color:T.navy }}>+351 289 400 450</strong>
-      </div>
     </div>
   );
 }
 
-/* ── ECRÃ: Vasilhame ── */
-const VASILHAME = [
-  { id:"V001", tipo:"Barril 50L — Inox",       ref:"BAR-50L",  entregue:12, devolvido:8,  emAberto:4,  deposito:18.00, img:"🛢️" },
-  { id:"V002", tipo:"Barril 30L — Inox",        ref:"BAR-30L",  entregue:6,  devolvido:6,  emAberto:0,  deposito:14.00, img:"🛢️" },
-  { id:"V003", tipo:"Barril 20L — Inox",        ref:"BAR-20L",  entregue:8,  devolvido:5,  emAberto:3,  deposito:10.00, img:"🛢️" },
-  { id:"V004", tipo:"Caixas Plástico 24un",     ref:"CX-24PL",  entregue:45, devolvido:38, emAberto:7,  deposito:2.50,  img:"📦" },
-  { id:"V005", tipo:"Caixas Plástico 12un",     ref:"CX-12PL",  entregue:20, devolvido:20, emAberto:0,  deposito:1.80,  img:"📦" },
-  { id:"V006", tipo:"Paletes de Madeira",       ref:"PAL-MAD",  entregue:10, devolvido:7,  emAberto:3,  deposito:8.00,  img:"🪵" },
-];
-
-const MOVIMENTOS_VAS = [
-  { data:"26 Fev 2025", tipo:"Entrega", ref:"BAR-50L", qtd:+2, enc:"ENC-2025-042" },
-  { data:"26 Fev 2025", tipo:"Entrega", ref:"CX-24PL", qtd:+5, enc:"ENC-2025-042" },
-  { data:"20 Fev 2025", tipo:"Devolução", ref:"BAR-50L", qtd:-1, enc:"—" },
-  { data:"14 Fev 2025", tipo:"Entrega", ref:"BAR-50L", qtd:+3, enc:"ENC-2025-031" },
-  { data:"14 Fev 2025", tipo:"Devolução", ref:"CX-24PL", qtd:-8, enc:"—" },
-  { data:"03 Fev 2025", tipo:"Devolução", ref:"BAR-20L", qtd:-2, enc:"—" },
-  { data:"03 Fev 2025", tipo:"Entrega", ref:"PAL-MAD",  qtd:+3, enc:"ENC-2025-018" },
-];
-
-function EcrãVasilhame() {
-  const [tab, setTab] = useState("saldo");
-
-  const totalEmAberto = VASILHAME.reduce((s,v) => s + v.emAberto, 0);
-  const totalDeposito = VASILHAME.reduce((s,v) => s + v.emAberto * v.deposito, 0);
-  const totalEntregue = VASILHAME.reduce((s,v) => s + v.entregue, 0);
+/* ══════════════════════════════════
+   ECRÃ: RELATÓRIOS
+══════════════════════════════════ */
+function EcrãRelatorios() {
+  const meses = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"];
+  const dados = [42000, 38000, 51000, 47000, 55000, 62000, 71000, 68000, 59000, 53000, 48000, 44000];
+  const maxVal = Math.max(...dados);
 
   return (
     <div>
-      {/* Header */}
-      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:24 }}>
-        <div>
-          <div style={{ fontSize:11, color:T.muted, letterSpacing:2, textTransform:"uppercase", fontFamily:"monospace", marginBottom:4 }}>Conta de</div>
-          <h1 style={{ margin:0, fontSize:28, fontWeight:700, color:T.navy, fontFamily:S.display }}>Vasilhame</h1>
-        </div>
-        <div style={{ background:`${T.orange}18`, border:`1px solid ${T.orange}44`, borderRadius:12, padding:"10px 16px", display:"flex", alignItems:"center", gap:8 }}>
-          <AlertCircle size={16} color={T.orange} />
-          <span style={{ fontSize:13, color:T.orange, fontWeight:600 }}>Para devoluções contacte o seu comercial</span>
-        </div>
+      <div style={{ marginBottom: 24 }}>
+        <div style={{ fontSize: 11, color: T.muted, letterSpacing: 2, textTransform: "uppercase", fontFamily: "monospace", marginBottom: 4 }}>Analytics</div>
+        <h1 style={{ margin: 0, fontSize: 28, fontWeight: 700, color: T.navy, fontFamily: S.display }}>Relatórios</h1>
       </div>
-
-      {/* KPIs */}
-      <div style={{ display:"grid", gridTemplateColumns:"repeat(4,1fr)", gap:14, marginBottom:28 }}>
-        <div style={{ background:T.white, borderRadius:16, padding:"20px 22px", border:`1px solid ${T.border}`, borderTop:`3px solid ${T.navy}` }}>
-          <div style={{ width:36, height:36, borderRadius:10, background:`${T.navy}18`, display:"flex", alignItems:"center", justifyContent:"center", marginBottom:12 }}>
-            <Truck size={18} color={T.navy} />
-          </div>
-          <div style={{ fontSize:26, fontWeight:800, color:T.navy, fontFamily:S.display }}>{totalEntregue}</div>
-          <div style={{ fontSize:12, color:T.muted, marginTop:2 }}>Total entregue</div>
-          <div style={{ fontSize:11, color:T.muted, marginTop:2 }}>histórico acumulado</div>
-        </div>
-
-        <div style={{ background:T.white, borderRadius:16, padding:"20px 22px", border:`1px solid ${T.border}`, borderTop:`3px solid ${T.green}` }}>
-          <div style={{ width:36, height:36, borderRadius:10, background:`${T.green}18`, display:"flex", alignItems:"center", justifyContent:"center", marginBottom:12 }}>
-            <PackageCheck size={18} color={T.green} />
-          </div>
-          <div style={{ fontSize:26, fontWeight:800, color:T.green, fontFamily:S.display }}>{VASILHAME.reduce((s,v)=>s+v.devolvido,0)}</div>
-          <div style={{ fontSize:12, color:T.muted, marginTop:2 }}>Já devolvido</div>
-          <div style={{ fontSize:11, color:T.muted, marginTop:2 }}>unidades recebidas</div>
-        </div>
-
-        <div style={{ background:T.white, borderRadius:16, padding:"20px 22px", border:`1px solid ${totalEmAberto>0?T.orange:T.border}`, borderTop:`3px solid ${totalEmAberto>0?T.orange:T.green}` }}>
-          <div style={{ width:36, height:36, borderRadius:10, background:`${totalEmAberto>0?T.orange:T.green}18`, display:"flex", alignItems:"center", justifyContent:"center", marginBottom:12 }}>
-            <PackageX size={18} color={totalEmAberto>0?T.orange:T.green} />
-          </div>
-          <div style={{ fontSize:26, fontWeight:800, color:totalEmAberto>0?T.orange:T.green, fontFamily:S.display }}>{totalEmAberto}</div>
-          <div style={{ fontSize:12, color:T.muted, marginTop:2 }}>Em aberto</div>
-          <div style={{ fontSize:11, color:T.muted, marginTop:2 }}>por devolver</div>
-        </div>
-
-        <div style={{ background:T.white, borderRadius:16, padding:"20px 22px", border:`1px solid ${T.border}`, borderTop:`3px solid ${T.red}` }}>
-          <div style={{ width:36, height:36, borderRadius:10, background:`${T.red}18`, display:"flex", alignItems:"center", justifyContent:"center", marginBottom:12 }}>
-            <Euro size={18} color={T.red} />
-          </div>
-          <div style={{ fontSize:26, fontWeight:800, color:T.red, fontFamily:S.display }}>€{fmt(totalDeposito)}</div>
-          <div style={{ fontSize:12, color:T.muted, marginTop:2 }}>Depósito em aberto</div>
-          <div style={{ fontSize:11, color:T.muted, marginTop:2 }}>valor caução total</div>
-        </div>
-      </div>
-
-      {/* Tabs */}
-      <div style={{ display:"flex", gap:4, marginBottom:20, background:T.white, border:`1px solid ${T.border}`, borderRadius:12, padding:4, width:"fit-content" }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 14, marginBottom: 24 }}>
         {[
-          { key:"saldo",      label:"Saldo por Tipo"     },
-          { key:"movimentos", label:"Histórico de Movimentos" },
-        ].map(t => (
-          <button key={t.key} onClick={() => setTab(t.key)} style={{ padding:"8px 20px", borderRadius:9, border:"none", background: tab===t.key?T.navy:"transparent", color: tab===t.key?"white":T.muted, fontSize:13, fontWeight:600, cursor:"pointer", fontFamily:S.font, transition:"all .15s" }}>
-            {t.label}
-          </button>
+          { label: "Volume 2025", value: "€622.000", delta: "+12%", up: true, color: T.navy },
+          { label: "Clientes Ativos", value: "48", delta: "+3", up: true, color: T.green },
+          { label: "Ticket Médio", value: "€1.245", delta: "-5%", up: false, color: T.red },
+        ].map((k, i) => (
+          <div key={i} style={{ background: T.white, borderRadius: 14, padding: "20px 22px", border: `1px solid ${T.border}`, borderTop: `3px solid ${k.color}` }}>
+            <div style={{ fontSize: 26, fontWeight: 800, color: k.color, fontFamily: S.display, marginBottom: 4 }}>{k.value}</div>
+            <div style={{ fontSize: 12, color: T.muted, marginBottom: 8 }}>{k.label}</div>
+            <div style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 12, fontWeight: 700, color: k.up ? T.green : T.red }}>
+              {k.up ? <ArrowUp size={12} /> : <ArrowDown size={12} />}{k.delta} vs ano anterior
+            </div>
+          </div>
         ))}
       </div>
-
-      {/* Tab: Saldo por tipo */}
-      {tab === "saldo" && (
-        <div style={{ background:T.white, borderRadius:16, border:`1px solid ${T.border}`, overflow:"hidden" }}>
-          <div style={{ display:"grid", gridTemplateColumns:"2fr 1fr 1fr 1fr 100px 100px", padding:"10px 20px", background:T.bg, borderBottom:`1px solid ${T.border}` }}>
-            {["Tipo de Vasilhame","Entregue","Devolvido","Em Aberto","Depósito/un","Total Caução"].map(h => (
-              <div key={h} style={{ fontSize:10, fontWeight:700, color:T.muted, textTransform:"uppercase", letterSpacing:1, fontFamily:"monospace" }}>{h}</div>
-            ))}
-          </div>
-
-          {VASILHAME.map((v, i) => {
-            const caucao = v.emAberto * v.deposito;
-            const pct = Math.round(v.devolvido / v.entregue * 100);
-            return (
-              <div key={v.id} style={{ display:"grid", gridTemplateColumns:"2fr 1fr 1fr 1fr 100px 100px", padding:"16px 20px", borderBottom: i<VASILHAME.length-1?`1px solid ${T.border}`:"none", alignItems:"center" }}
-                onMouseEnter={e=>e.currentTarget.style.background=T.bg+"88"}
-                onMouseLeave={e=>e.currentTarget.style.background="transparent"}
-              >
-                {/* Tipo */}
-                <div style={{ display:"flex", alignItems:"center", gap:12 }}>
-                  <div style={{ fontSize:24 }}>{v.img}</div>
-                  <div>
-                    <div style={{ fontSize:14, fontWeight:700, color:T.navy }}>{v.tipo}</div>
-                    <div style={{ fontSize:11, color:T.muted, fontFamily:"monospace" }}>{v.ref}</div>
-                  </div>
-                </div>
-
-                {/* Entregue */}
-                <div style={{ fontSize:15, fontWeight:700, color:T.navy }}>{v.entregue} un</div>
-
-                {/* Devolvido + barra */}
-                <div>
-                  <div style={{ fontSize:15, fontWeight:700, color:T.green }}>{v.devolvido} un</div>
-                  <div style={{ height:3, background:T.bg, borderRadius:2, marginTop:4, width:60 }}>
-                    <div style={{ width:`${pct}%`, height:"100%", background:T.green, borderRadius:2 }} />
-                  </div>
-                </div>
-
-                {/* Em aberto */}
-                <div>
-                  {v.emAberto > 0
-                    ? <span style={{ background:`${T.orange}18`, color:T.orange, padding:"4px 10px", borderRadius:20, fontSize:13, fontWeight:700 }}>{v.emAberto} un</span>
-                    : <span style={{ background:`${T.green}18`, color:T.green, padding:"4px 10px", borderRadius:20, fontSize:13, fontWeight:700 }}>✓ 0</span>
-                  }
-                </div>
-
-                {/* Depósito/un */}
-                <div style={{ fontSize:13, color:T.muted }}>€{fmt(v.deposito)}</div>
-
-                {/* Caução */}
-                <div style={{ fontSize:15, fontWeight:800, color: caucao>0?T.red:T.muted, fontFamily:S.display }}>
-                  {caucao > 0 ? `€${fmt(caucao)}` : "—"}
-                </div>
-              </div>
-            );
-          })}
-
-          {/* Total */}
-          <div style={{ display:"grid", gridTemplateColumns:"2fr 1fr 1fr 1fr 100px 100px", padding:"14px 20px", background:T.bg, borderTop:`2px solid ${T.border}` }}>
-            <div style={{ fontSize:13, fontWeight:700, color:T.navy }}>TOTAIS</div>
-            <div style={{ fontSize:14, fontWeight:800, color:T.navy }}>{totalEntregue}</div>
-            <div style={{ fontSize:14, fontWeight:800, color:T.green }}>{VASILHAME.reduce((s,v)=>s+v.devolvido,0)}</div>
-            <div style={{ fontSize:14, fontWeight:800, color:T.orange }}>{totalEmAberto}</div>
-            <div></div>
-            <div style={{ fontSize:15, fontWeight:800, color:T.red, fontFamily:S.display }}>€{fmt(totalDeposito)}</div>
-          </div>
-        </div>
-      )}
-
-      {/* Tab: Movimentos */}
-      {tab === "movimentos" && (
-        <div style={{ background:T.white, borderRadius:16, border:`1px solid ${T.border}`, overflow:"hidden" }}>
-          <div style={{ display:"grid", gridTemplateColumns:"110px 120px 1fr 80px 1fr", padding:"10px 20px", background:T.bg, borderBottom:`1px solid ${T.border}` }}>
-            {["Data","Tipo","Referência","Qtd.","Encomenda"].map(h => (
-              <div key={h} style={{ fontSize:10, fontWeight:700, color:T.muted, textTransform:"uppercase", letterSpacing:1, fontFamily:"monospace" }}>{h}</div>
-            ))}
-          </div>
-          {MOVIMENTOS_VAS.map((m, i) => {
-            const isEntrega = m.tipo === "Entrega";
-            return (
-              <div key={i} style={{ display:"grid", gridTemplateColumns:"110px 120px 1fr 80px 1fr", padding:"13px 20px", borderBottom: i<MOVIMENTOS_VAS.length-1?`1px solid ${T.border}`:"none", alignItems:"center" }}
-                onMouseEnter={e=>e.currentTarget.style.background=T.bg+"88"}
-                onMouseLeave={e=>e.currentTarget.style.background="transparent"}
-              >
-                <div style={{ fontSize:12, color:T.muted }}>{m.data}</div>
-                <div>
-                  <span style={{ background: isEntrega?`${T.blue}18`:`${T.green}18`, color: isEntrega?T.blue:T.green, padding:"3px 10px", borderRadius:20, fontSize:11, fontWeight:700, display:"flex", alignItems:"center", gap:5, width:"fit-content" }}>
-                    {isEntrega ? <Truck size={10} /> : <RotateCcw size={10} />}
-                    {m.tipo}
-                  </span>
-                </div>
-                <div style={{ fontSize:13, fontWeight:600, color:T.navy, fontFamily:"monospace" }}>{m.ref}</div>
-                <div style={{ fontSize:15, fontWeight:800, color: isEntrega?T.blue:T.green }}>
-                  {isEntrega ? `+${m.qtd}` : m.qtd}
-                </div>
-                <div style={{ fontSize:12, color:T.muted, fontFamily:"monospace" }}>{m.enc}</div>
-              </div>
-            );
-          })}
-        </div>
-      )}
-
-      <div style={{ marginTop:12, fontSize:12, color:T.muted, display:"flex", alignItems:"center", gap:6 }}>
-        <AlertCircle size={13} />
-        Divergências no saldo? Contacte: <strong style={{ color:T.navy }}>geral@empro.pt</strong> ou <strong style={{ color:T.navy }}>+351 289 400 450</strong>
-      </div>
-    </div>
-  );
-}
-
-/* ── ECRÃ: Perfil ── */
-function EcrãPerfil({ onNav }) {
-  const pct = Math.round(CLIENT.saldo / CLIENT.limite * 100);
-  return (
-    <div>
-      <div style={{ marginBottom:24 }}>
-        <div style={{ fontSize:11, color:T.muted, letterSpacing:2, textTransform:"uppercase", fontFamily:"monospace", marginBottom:4 }}>A minha</div>
-        <h1 style={{ margin:0, fontSize:28, fontWeight:700, color:T.navy, fontFamily:S.display }}>Conta</h1>
-      </div>
-
-      <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:16 }}>
-
-        {/* Dados da empresa */}
-        <div style={{ background:T.white, borderRadius:16, border:`1px solid ${T.border}`, padding:28 }}>
-          <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:20, paddingBottom:16, borderBottom:`1px solid ${T.border}` }}>
-            <div style={{ width:36, height:36, borderRadius:10, background:`${T.navy}18`, display:"flex", alignItems:"center", justifyContent:"center" }}>
-              <Building2 size={18} color={T.navy} />
-            </div>
-            <div style={{ fontSize:16, fontWeight:700, color:T.navy, fontFamily:S.display }}>Dados da Empresa</div>
-          </div>
-          {[
-            { label:"Nome",         value: CLIENT.name },
-            { label:"NIF",          value: CLIENT.nif },
-            { label:"Localidade",   value: CLIENT.local },
-            { label:"Tipo de Cliente", value: `Tipo ${CLIENT.tipo}` },
-            { label:"Desconto Base",value: `${CLIENT.desconto_base}%` },
-          ].map(f => (
-            <div key={f.label} style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"10px 0", borderBottom:`1px solid ${T.border}` }}>
-              <span style={{ fontSize:12, color:T.muted, fontWeight:600, textTransform:"uppercase", letterSpacing:0.8, fontFamily:"monospace" }}>{f.label}</span>
-              <span style={{ fontSize:14, fontWeight:600, color:T.text }}>{f.value}</span>
+      <div style={{ background: T.white, borderRadius: 16, border: `1px solid ${T.border}`, padding: "24px" }}>
+        <div style={{ fontSize: 16, fontWeight: 700, color: T.navy, fontFamily: S.display, marginBottom: 20 }}>Volume de Vendas 2025 (€)</div>
+        <div style={{ display: "flex", alignItems: "flex-end", gap: 8, height: 160 }}>
+          {dados.map((v, i) => (
+            <div key={i} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 6 }}>
+              <div style={{ fontSize: 9, color: T.muted, fontFamily: "monospace" }}>€{Math.round(v / 1000)}k</div>
+              <div style={{ width: "100%", background: `linear-gradient(to top, ${T.navy}, ${T.navyL})`, borderRadius: "4px 4px 0 0", height: `${(v / maxVal) * 120}px` }} />
+              <div style={{ fontSize: 10, color: T.muted }}>{meses[i]}</div>
             </div>
           ))}
-          <div style={{ marginTop:16 }}>
-            <Btn variant="secondary" size="sm" icon={Mail} onClick={() => window.open(`mailto:geral@empro.pt?subject=Atualização de dados — ${CLIENT.name}&body=Boa tarde,%0D%0A%0D%0AGostaria de atualizar os seguintes dados da minha conta:%0D%0A%0D%0A`)}>
-              Solicitar atualização de dados
-            </Btn>
-          </div>
-        </div>
-
-        {/* Condições comerciais */}
-        <div style={{ background:T.white, borderRadius:16, border:`1px solid ${T.border}`, padding:28 }}>
-          <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:20, paddingBottom:16, borderBottom:`1px solid ${T.border}` }}>
-            <div style={{ width:36, height:36, borderRadius:10, background:`${T.green}18`, display:"flex", alignItems:"center", justifyContent:"center" }}>
-              <CreditCard size={18} color={T.green} />
-            </div>
-            <div style={{ fontSize:16, fontWeight:700, color:T.navy, fontFamily:S.display }}>Condições Comerciais</div>
-          </div>
-
-          <div style={{ display:"flex", gap:12, marginBottom:20 }}>
-            <div style={{ flex:1, background:T.bg, borderRadius:12, padding:"14px 16px", textAlign:"center" }}>
-              <div style={{ fontSize:22, fontWeight:800, color:T.red, fontFamily:S.display }}>€{fmt(CLIENT.saldo)}</div>
-              <div style={{ fontSize:11, color:T.muted, marginTop:2 }}>Saldo em aberto</div>
-            </div>
-            <div style={{ flex:1, background:T.bg, borderRadius:12, padding:"14px 16px", textAlign:"center" }}>
-              <div style={{ fontSize:22, fontWeight:800, color:T.green, fontFamily:S.display }}>€{fmt(CLIENT.credito)}</div>
-              <div style={{ fontSize:11, color:T.muted, marginTop:2 }}>Crédito disponível</div>
-            </div>
-          </div>
-
-          <div style={{ marginBottom:16 }}>
-            <div style={{ display:"flex", justifyContent:"space-between", marginBottom:6 }}>
-              <span style={{ fontSize:12, color:T.muted }}>Utilização de crédito</span>
-              <span style={{ fontSize:12, fontWeight:700, color: pct>80?T.red:pct>50?T.orange:T.green }}>{pct}%</span>
-            </div>
-            <div style={{ height:8, background:T.bg, borderRadius:4 }}>
-              <div style={{ width:`${pct}%`, height:"100%", background: pct>80?T.red:pct>50?T.orange:T.green, borderRadius:4, transition:"width .5s" }} />
-            </div>
-            <div style={{ display:"flex", justifyContent:"space-between", marginTop:5 }}>
-              <span style={{ fontSize:11, color:T.muted }}>Limite: €{fmt(CLIENT.limite)}</span>
-              <span style={{ fontSize:11, color:T.muted }}>Prazo: 30 dias</span>
-            </div>
-          </div>
-
-          <Btn variant="secondary" size="sm" icon={FileText} onClick={() => onNav("faturas")}>
-            Ver faturas em aberto
-          </Btn>
-        </div>
-
-        {/* Comercial responsável */}
-        <div style={{ background:T.white, borderRadius:16, border:`1px solid ${T.border}`, padding:28 }}>
-          <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:20, paddingBottom:16, borderBottom:`1px solid ${T.border}` }}>
-            <div style={{ width:36, height:36, borderRadius:10, background:`${T.blue}18`, display:"flex", alignItems:"center", justifyContent:"center" }}>
-              <User size={18} color={T.blue} />
-            </div>
-            <div style={{ fontSize:16, fontWeight:700, color:T.navy, fontFamily:S.display }}>Comercial Responsável</div>
-          </div>
-
-          <div style={{ display:"flex", alignItems:"center", gap:16, marginBottom:20 }}>
-            <div style={{ width:56, height:56, borderRadius:"50%", background:`linear-gradient(135deg,${T.navy},${T.navyL})`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:22, color:"white", fontWeight:700, fontFamily:S.display, flexShrink:0 }}>
-              {CLIENT.comercial.split(" ").map(n=>n[0]).join("")}
-            </div>
-            <div>
-              <div style={{ fontSize:17, fontWeight:700, color:T.navy, fontFamily:S.display }}>{CLIENT.comercial}</div>
-              <div style={{ fontSize:12, color:T.muted, marginTop:2 }}>Zona Algarve · EMPRO</div>
-              <Badge color={T.green} small>Disponível</Badge>
-            </div>
-          </div>
-
-          <div style={{ display:"flex", gap:10 }}>
-            <Btn full icon={Phone} onClick={() => window.open(`tel:${CLIENT.phone}`)}>
-              {CLIENT.phone}
-            </Btn>
-            <Btn variant="secondary" full icon={Mail} onClick={() => window.open(`mailto:geral@empro.pt?subject=Contacto de ${CLIENT.name}`)}>
-              Email
-            </Btn>
-          </div>
-        </div>
-
-        {/* Ações rápidas */}
-        <div style={{ background:T.white, borderRadius:16, border:`1px solid ${T.border}`, padding:28 }}>
-          <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:20, paddingBottom:16, borderBottom:`1px solid ${T.border}` }}>
-            <div style={{ width:36, height:36, borderRadius:10, background:`${T.orange}18`, display:"flex", alignItems:"center", justifyContent:"center" }}>
-              <Sparkles size={18} color={T.orange} />
-            </div>
-            <div style={{ fontSize:16, fontWeight:700, color:T.navy, fontFamily:S.display }}>Ações Rápidas</div>
-          </div>
-          <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
-            {[
-              { label:"Nova Encomenda",          Icon:ShoppingCart, page:"catalogo",  color:T.red   },
-              { label:"Ver Faturas em Aberto",   Icon:Receipt,      page:"faturas",   color:T.navy  },
-              { label:"Saldo de Vasilhame",      Icon:RotateCcw,    page:"vasilhame", color:T.blue  },
-              { label:"Histórico de Encomendas", Icon:FileText,     page:"historico", color:T.green },
-            ].map(a => {
-              const AIcon = a.Icon;
-              return (
-              <button key={a.label} onClick={() => onNav(a.page)} style={{ display:"flex", alignItems:"center", gap:12, padding:"12px 16px", borderRadius:10, border:`1px solid ${T.border}`, background:T.bg, cursor:"pointer", fontFamily:S.font, transition:"all .15s" }}
-                onMouseEnter={e=>{ e.currentTarget.style.background=`${a.color}11`; e.currentTarget.style.borderColor=`${a.color}44`; }}
-                onMouseLeave={e=>{ e.currentTarget.style.background=T.bg; e.currentTarget.style.borderColor=T.border; }}
-              >
-                <div style={{ width:32, height:32, borderRadius:8, background:`${a.color}18`, display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>
-                  <AIcon size={15} color={a.color} />
-                </div>
-                <span style={{ fontSize:14, fontWeight:600, color:T.text }}>{a.label}</span>
-                <ChevronRight size={14} color={T.muted} style={{ marginLeft:"auto" }} />
-              </button>
-              );
-            })}
-          </div>
         </div>
       </div>
     </div>
   );
 }
 
-/* ── LAYOUT PRINCIPAL ── */
-export default function LojaEmpro() {
-  const [acesso,    setAcesso]    = useState(false);
-  const [page,      setPage]      = useState("dashboard");
-  const [cart,      setCart]      = useState([]);
-  const [favorites, setFavorites] = useState([]);
+/* ══════════════════════════════════
+   LAYOUT PRINCIPAL
+══════════════════════════════════ */
+export default function BackOffice() {
+  const [page, setPage] = useState("encomendas");
+  const [encPendentes, setEncPendentes] = useState(0);
 
-  const addToCart = (prod, qty) => {
-    setCart(c => {
-      const exists = c.find(x => x.id === prod.id);
-      if (exists) return c.map(x => x.id === prod.id ? { ...x, qty } : x);
-      return [...c, { ...prod, qty }];
+  useEffect(() => {
+    const unsub = onSnapshot(collection(db, "encomendas"), (snap) => {
+      setEncPendentes(snap.docs.filter(d => d.data().estado === "pendente").length);
     });
-  };
-
-  // Repetir encomenda: adiciona todos os artigos do histórico ao carrinho
-  const repetirEncomenda = (enc) => {
-    // Mapeia nomes do histórico para produtos reais
-    enc.prods.forEach(linha => {
-      const match = PRODUTOS.find(p => linha.toLowerCase().includes(p.nome.toLowerCase().split(" ")[0].toLowerCase()));
-      if (match) {
-        const qty = parseInt(linha.match(/×(\d+)/)?.[1]) || match.min;
-        addToCart(match, qty);
-      }
-    });
-  };
-
-  const toggleFavorite = (id) => {
-    setFavorites(f => f.includes(id) ? f.filter(x => x !== id) : [...f, id]);
-  };
-
-  const updateCart = (id, qty) => {
-    if (qty <= 0) setCart(c => c.filter(x => x.id !== id));
-    else setCart(c => c.map(x => x.id === id ? { ...x, qty } : x));
-  };
-
-  const removeFromCart = (id) => setCart(c => c.filter(x => x.id !== id));
-  const clearCart = () => setCart([]);
-
-  if (!acesso) return <EcrãConvite onAccess={() => setAcesso(true)} />;
-
-  const cartCount = cart.reduce((s,c) => s+c.qty, 0);
+    return () => unsub();
+  }, []);
 
   const NAV = [
-    { id:"dashboard", icon: Home,         label:"Início"    },
-    { id:"catalogo",  icon: Package,       label:"Catálogo"  },
-    { id:"carrinho",  icon: ShoppingCart,  label:"Carrinho", badge: cartCount },
-    { id:"faturas",   icon: Receipt,       label:"Faturas"   },
-    { id:"vasilhame", icon: RotateCcw,     label:"Vasilhame" },
-    { id:"historico", icon: FileText,      label:"Histórico" },
-    { id:"perfil",    icon: User,          label:"Conta"     },
+    { id: "encomendas", icon: ShoppingBag, label: "Encomendas", badge: encPendentes },
+    { id: "promocoes", icon: Tag, label: "Promoções" },
+    { id: "produtos", icon: Package, label: "Produtos" },
+    { id: "clientes", icon: Users, label: "Clientes" },
+    { id: "relatorios", icon: BarChart2, label: "Relatórios" },
   ];
 
   return (
-    <div style={{ fontFamily: S.font, background: T.bg, minHeight:"100vh", color: T.text }}>
-      {/* Topbar */}
-      <div style={{ position:"sticky", top:0, zIndex:100, background: T.bgWarm, borderBottom:`1px solid ${T.border}`, backdropFilter:"blur(8px)" }}>
-        <div style={{ maxWidth:1200, margin:"0 auto", padding:"0 32px", display:"flex", alignItems:"center", justifyContent:"space-between", height:60 }}>
-          {/* Logo */}
-          <div style={{ display:"flex", alignItems:"center", gap:12 }}>
-            <div>
-              <div style={{ fontSize:8, color: T.red, letterSpacing:3, fontFamily:"monospace" }}>DISTRIBUIDORA</div>
-              <div style={{ fontSize:20, fontWeight:800, color: T.navy, fontFamily: S.display, lineHeight:1 }}>EMPRO</div>
-            </div>
-            <div style={{ width:1, height:28, background: T.border }} />
-            <div style={{ fontSize:12, color: T.muted }}>{CLIENT.name}</div>
-          </div>
-
-          {/* Nav central */}
-          <nav style={{ display:"flex", gap:2 }}>
-            {NAV.map(item => {
-              const NavIcon = item.icon;
-              return (
+    <div style={{ display: "flex", minHeight: "100vh", fontFamily: S.font, background: T.bg }}>
+      {/* Sidebar */}
+      <div style={{ width: 220, background: T.sidebar, display: "flex", flexDirection: "column", position: "fixed", height: "100vh", top: 0, left: 0, zIndex: 50 }}>
+        <div style={{ padding: "28px 24px 20px", borderBottom: `1px solid ${T.navyL}44` }}>
+          <div style={{ fontSize: 8, color: T.red, letterSpacing: 3, fontFamily: "monospace", marginBottom: 4 }}>BACK OFFICE</div>
+          <div style={{ fontSize: 22, fontWeight: 800, color: "white", fontFamily: S.display }}>EMPRO</div>
+          <div style={{ fontSize: 10, color: T.mutedL, marginTop: 2 }}>Emprodalbe, Lda</div>
+        </div>
+        <nav style={{ flex: 1, padding: "16px 12px" }}>
+          {NAV.map(item => {
+            const Icon = item.icon;
+            const active = page === item.id;
+            return (
               <button key={item.id} onClick={() => setPage(item.id)} style={{
-                display:"flex", alignItems:"center", gap:7, padding:"8px 14px", borderRadius:8, border:"none",
-                background: page===item.id ? T.navy : "transparent",
-                color: page===item.id ? "white" : T.muted,
-                fontSize:13, fontWeight:600, cursor:"pointer", fontFamily: S.font, position:"relative",
+                display: "flex", alignItems: "center", gap: 10, width: "100%", padding: "10px 12px", borderRadius: 10,
+                border: "none", background: active ? `${T.red}22` : "transparent",
+                color: active ? "white" : T.mutedL, fontSize: 13, fontWeight: active ? 700 : 500,
+                cursor: "pointer", fontFamily: S.font, marginBottom: 2, position: "relative",
+                borderLeft: active ? `3px solid ${T.red}` : "3px solid transparent",
               }}>
-                <NavIcon size={14} />{item.label}
+                <Icon size={16} />{item.label}
                 {item.badge > 0 && (
-                  <span style={{ position:"absolute", top:4, right:4, width:16, height:16, borderRadius:"50%", background: T.red, color:"white", fontSize:9, fontWeight:800, display:"flex", alignItems:"center", justifyContent:"center" }}>
+                  <span style={{ marginLeft: "auto", background: T.red, color: "white", fontSize: 10, fontWeight: 800, width: 18, height: 18, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center" }}>
                     {item.badge}
                   </span>
                 )}
               </button>
-              );
-            })}
-          </nav>
-
-          {/* Right */}
-          <div style={{ display:"flex", alignItems:"center", gap:12 }}>
-            <div style={{ textAlign:"right" }}>
-              <div style={{ fontSize:12, fontWeight:600, color: T.navy }}>{CLIENT.name}</div>
-              <div style={{ fontSize:10, color: T.muted }}>Tipo {CLIENT.tipo} · {CLIENT.desconto_base}% desconto</div>
-            </div>
-            <button onClick={() => setAcesso(false)} style={{ background:"none", border:`1px solid ${T.border}`, borderRadius:8, padding:"7px 10px", cursor:"pointer", color: T.muted, display:"flex", alignItems:"center" }}>
-              <LogOut size={14} />
-            </button>
-          </div>
+            );
+          })}
+        </nav>
+        <div style={{ padding: "16px 12px", borderTop: `1px solid ${T.navyL}44` }}>
+          <div style={{ fontSize: 11, color: T.mutedL, marginBottom: 4 }}>Administrador</div>
+          <div style={{ fontSize: 12, fontWeight: 600, color: "white" }}>geral@empro.pt</div>
         </div>
       </div>
 
-      {/* Conteúdo */}
-      <div style={{ maxWidth:1200, margin:"0 auto", padding:"32px 32px 60px" }}>
-        {page === "dashboard" && <EcrãDashboard onNav={setPage} cart={cart} />}
-        {page === "catalogo"  && <EcrãCatalogo cart={cart} onCart={addToCart} favorites={favorites} onToggleFav={toggleFavorite} />}
-        {page === "carrinho"  && <EcrãCarrinho cart={cart} onUpdateCart={updateCart} onRemove={removeFromCart} onNav={setPage} onCheckout={clearCart} />}
-        {page === "faturas"   && <EcrãFaturas />}
-        {page === "vasilhame" && <EcrãVasilhame />}
-        {page === "historico" && <EcrãHistorico onRepetir={repetirEncomenda} onNav={setPage} />}
-        {page === "perfil"    && <EcrãPerfil onNav={setPage} />}
+      {/* Main */}
+      <div style={{ marginLeft: 220, flex: 1, display: "flex", flexDirection: "column" }}>
+        <div style={{ background: T.bgWarm, borderBottom: `1px solid ${T.border}`, padding: "14px 32px", display: "flex", justifyContent: "space-between", alignItems: "center", position: "sticky", top: 0, zIndex: 40 }}>
+          <div style={{ fontSize: 13, color: T.muted }}>
+            {new Date().toLocaleDateString("pt-PT", { weekday: "long", year: "numeric", month: "long", day: "numeric" })}
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            {encPendentes > 0 && (
+              <div style={{ background: `${T.orange}18`, border: `1px solid ${T.orange}44`, borderRadius: 10, padding: "6px 12px", display: "flex", alignItems: "center", gap: 6, cursor: "pointer" }} onClick={() => setPage("encomendas")}>
+                <Bell size={13} color={T.orange} />
+                <span style={{ fontSize: 12, fontWeight: 700, color: T.orange }}>{encPendentes} pendente{encPendentes > 1 ? "s" : ""}</span>
+              </div>
+            )}
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <div style={{ width: 32, height: 32, borderRadius: "50%", background: `linear-gradient(135deg,${T.navy},${T.navyL})`, display: "flex", alignItems: "center", justifyContent: "center", color: "white", fontSize: 13, fontWeight: 700 }}>E</div>
+              <span style={{ fontSize: 13, fontWeight: 600, color: T.navy }}>Admin</span>
+            </div>
+          </div>
+        </div>
+        <div style={{ flex: 1, padding: "32px 32px 60px" }}>
+          {page === "encomendas" && <EcrãEncomendas />}
+          {page === "promocoes" && <EcrãPromoções />}
+          {page === "produtos" && <EcrãProdutos />}
+          {page === "clientes" && <EcrãClientes />}
+          {page === "relatorios" && <EcrãRelatorios />}
+        </div>
       </div>
     </div>
   );
