@@ -451,24 +451,33 @@ function EcrãCatalogo({ produtos, loadingProdutos, cart, onCart, favorites, onT
               onMouseEnter={e=>{ e.currentTarget.style.boxShadow="0 8px 28px rgba(19,41,75,.1)"; e.currentTarget.style.transform="translateY(-2px)"; }}
               onMouseLeave={e=>{ e.currentTarget.style.boxShadow="none"; e.currentTarget.style.transform="translateY(0)"; }}
             >
-              {/* Topo — sempre altura fixa com foto ou placeholder */}
-              <div style={{ background:`linear-gradient(135deg, ${famColor}15, ${famColor}05)`, height: 180, borderBottom:`1px solid ${T.border}`, display:"flex", justifyContent:"space-between", alignItems:"flex-start", overflow:"hidden", position:"relative" }}>
+              {/* Topo — quadrado com badges e botões sobrepostos */}
+              <div style={{ position:"relative", width:"100%", paddingBottom:"100%", background:`linear-gradient(135deg, ${famColor}15, ${famColor}05)`, borderBottom:`1px solid ${T.border}`, overflow:"hidden" }}>
                 {p.foto
-                  ? <img src={p.foto} alt={p.nome} style={{ position:"absolute", inset:0, width:"100%", height:"100%", objectFit:"contain", padding:"8px" }} />
-                  : <div style={{ position:"absolute", inset:0, display:"flex", alignItems:"center", justifyContent:"center" }}><Package size={48} color={famColor + "44"} /></div>
+                  ? <img src={p.foto} alt={p.nome} style={{ position:"absolute", inset:0, width:"100%", height:"100%", objectFit:"contain", padding:"16px" }} />
+                  : <div style={{ position:"absolute", inset:0, display:"flex", alignItems:"center", justifyContent:"center" }}><Package size={52} color={famColor + "33"} /></div>
                 }
-                <div style={{ display:"flex", gap:6, flexWrap:"wrap", position:"relative", zIndex:1, padding:"10px 12px" }}>
+                {/* Badges topo esquerda */}
+                <div style={{ position:"absolute", top:10, left:10, display:"flex", gap:5, flexWrap:"wrap", zIndex:2 }}>
                   <Badge color={famColor} small>{FAMILIAS.find(f=>f.id===p.familia)?.label}</Badge>
                   {p.destaque && <Badge color={T.orange} small>⭐ Destaque</Badge>}
                   {p.novo && <Badge color={T.green} small>Novo</Badge>}
                   {promoAtiva && <Badge color={T.red} small>🎁 Promo</Badge>}
                 </div>
-                <div style={{ display:"flex", gap:6, position:"relative", zIndex:1, padding:"10px 12px" }}>
-                  {inC && <div style={{ width:20, height:20, borderRadius:"50%", background: T.green, display:"flex", alignItems:"center", justifyContent:"center" }}><CheckCircle size={12} color="white" /></div>}
-                  <button onClick={(e) => { e.stopPropagation(); onToggleFav(p.id); }} style={{ background:"none", border:"none", cursor:"pointer", padding:2, display:"flex", alignItems:"center" }}>
-                    <Heart size={16} color={favorites.includes(p.id) ? T.orange : T.mutedL} fill={favorites.includes(p.id) ? T.orange : "none"} style={{ transition:"all .2s" }} />
+                {/* Botões topo direita */}
+                <div style={{ position:"absolute", top:10, right:10, display:"flex", flexDirection:"column", gap:6, zIndex:2 }}>
+                  <button onClick={(e) => { e.stopPropagation(); onToggleFav(p.id); }} style={{ width:32, height:32, background:"white", border:"none", cursor:"pointer", borderRadius:"50%", display:"flex", alignItems:"center", justifyContent:"center", boxShadow:"0 1px 6px #0002" }}>
+                    <Heart size={15} color={favorites.includes(p.id) ? T.orange : T.mutedL} fill={favorites.includes(p.id) ? T.orange : "none"} style={{ transition:"all .2s" }} />
                   </button>
+                  {inC && <div style={{ width:32, height:32, borderRadius:"50%", background: T.green, display:"flex", alignItems:"center", justifyContent:"center", boxShadow:"0 1px 6px #0002" }}><CheckCircle size={15} color="white" /></div>}
                 </div>
+                {/* Botão PDF fundo esquerda */}
+                {p.pdf && (
+                  <a href={p.pdf} target="_blank" rel="noreferrer"
+                    style={{ position:"absolute", bottom:10, left:10, zIndex:2, display:"flex", alignItems:"center", gap:5, background:"white", border:`1px solid ${T.red}`, borderRadius:8, padding:"5px 10px", color: T.red, fontSize:11, fontWeight:700, textDecoration:"none", boxShadow:"0 1px 6px #0002" }}>
+                    <FileText size={13} /> Ficha PDF
+                  </a>
+                )}
               </div>
 
               {/* Corpo */}
@@ -506,12 +515,6 @@ function EcrãCatalogo({ produtos, loadingProdutos, cart, onCart, favorites, onT
                   <Btn onClick={() => addToCart(p)} full icon={ShoppingCart} size="sm">
                     {inC ? "Atualizar" : "Adicionar"}
                   </Btn>
-                  {p.pdf && (
-                    <a href={p.pdf} target="_blank" rel="noreferrer" title="Ficha técnica PDF"
-                      style={{ display:"flex", alignItems:"center", justifyContent:"center", width:36, height:36, borderRadius:8, border:`1px solid ${T.border}`, color: T.red, flexShrink:0 }}>
-                      <FileText size={14} />
-                    </a>
-                  )}
                 </div>
               </div>
             </div>
