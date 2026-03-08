@@ -451,16 +451,19 @@ function EcrãCatalogo({ produtos, loadingProdutos, cart, onCart, favorites, onT
               onMouseEnter={e=>{ e.currentTarget.style.boxShadow="0 8px 28px rgba(19,41,75,.1)"; e.currentTarget.style.transform="translateY(-2px)"; }}
               onMouseLeave={e=>{ e.currentTarget.style.boxShadow="none"; e.currentTarget.style.transform="translateY(0)"; }}
             >
-              {/* Topo — foto ou gradiente */}
-              <div style={{ background:`linear-gradient(135deg, ${famColor}15, ${famColor}05)`, height: p.foto ? 160 : "auto", padding: p.foto ? 0 : "16px 18px", borderBottom:`1px solid ${T.border}`, display:"flex", justifyContent:"space-between", alignItems:"flex-start", overflow:"hidden", position:"relative" }}>
-                {p.foto && <img src={p.foto} alt={p.nome} style={{ position:"absolute", inset:0, width:"100%", height:"100%", objectFit:"cover" }} />}
-                <div style={{ display:"flex", gap:6, flexWrap:"wrap", position:"relative", zIndex:1, padding: p.foto ? "10px 12px" : 0 }}>
+              {/* Topo — sempre altura fixa com foto ou placeholder */}
+              <div style={{ background:`linear-gradient(135deg, ${famColor}15, ${famColor}05)`, height: 180, borderBottom:`1px solid ${T.border}`, display:"flex", justifyContent:"space-between", alignItems:"flex-start", overflow:"hidden", position:"relative" }}>
+                {p.foto
+                  ? <img src={p.foto} alt={p.nome} style={{ position:"absolute", inset:0, width:"100%", height:"100%", objectFit:"contain", padding:"8px" }} />
+                  : <div style={{ position:"absolute", inset:0, display:"flex", alignItems:"center", justifyContent:"center" }}><Package size={48} color={famColor + "44"} /></div>
+                }
+                <div style={{ display:"flex", gap:6, flexWrap:"wrap", position:"relative", zIndex:1, padding:"10px 12px" }}>
                   <Badge color={famColor} small>{FAMILIAS.find(f=>f.id===p.familia)?.label}</Badge>
                   {p.destaque && <Badge color={T.orange} small>⭐ Destaque</Badge>}
                   {p.novo && <Badge color={T.green} small>Novo</Badge>}
                   {promoAtiva && <Badge color={T.red} small>🎁 Promo</Badge>}
                 </div>
-                <div style={{ display:"flex", gap:6, position:"relative", zIndex:1, padding: p.foto ? "10px 12px" : 0 }}>
+                <div style={{ display:"flex", gap:6, position:"relative", zIndex:1, padding:"10px 12px" }}>
                   {inC && <div style={{ width:20, height:20, borderRadius:"50%", background: T.green, display:"flex", alignItems:"center", justifyContent:"center" }}><CheckCircle size={12} color="white" /></div>}
                   <button onClick={(e) => { e.stopPropagation(); onToggleFav(p.id); }} style={{ background:"none", border:"none", cursor:"pointer", padding:2, display:"flex", alignItems:"center" }}>
                     <Heart size={16} color={favorites.includes(p.id) ? T.orange : T.mutedL} fill={favorites.includes(p.id) ? T.orange : "none"} style={{ transition:"all .2s" }} />
