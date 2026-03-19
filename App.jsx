@@ -9,7 +9,7 @@ import {
 } from "lucide-react";
 import { initializeApp } from "firebase/app";
 import { getFirestore, collection, addDoc, serverTimestamp, onSnapshot, query, orderBy } from "firebase/firestore";
-import { getAuth, signInAnonymously } from "firebase/auth";
+import { getAuth, signInAnonymously, signInWithEmailAndPassword, signOut, onAuthStateChanged } from "firebase/auth";
 
 /* ── Firebase ── */
 const firebaseConfig = {
@@ -23,7 +23,21 @@ const firebaseConfig = {
 const firebaseApp = initializeApp(firebaseConfig);
 const db = getFirestore(firebaseApp);
 const auth = getAuth(firebaseApp);
-signInAnonymously(auth).catch(e => console.warn("Auth anónima falhou:", e.message));
+
+let authReady = false;
+const authReadyPromise = new Promise(resolve => {
+  signInAnonymously(auth)
+    .then(() => { authReady = true; resolve(); })
+    .catch(e => { console.warn("Auth anónima falhou:", e.message); resolve(); });
+});
+
+function useAuthReady() {
+  const [ready, setReady] = React.useState(authReady);
+  React.useEffect(() => {
+    if (!authReady) authReadyPromise.then(() => setReady(true));
+  }, []);
+  return ready;
+}
 
 /* ── Google Fonts ── */
 const fontLink = document.createElement("link");
@@ -110,8 +124,8 @@ const FATURAS = [
   { id:"FT 2025/001", enc:"ENC-2025-001", data:"10 Jan 2025", venc:"10 Fev 2025", total:590.80,  iva:113.92, liquido:476.88, estado:"paga",      vencida:false },
   { id:"FT 2024/198", enc:"ENC-2024-198", data:"22 Dez 2024", venc:"22 Jan 2025", total:1840.20, iva:355.00, liquido:1485.20,estado:"paga",      vencida:false },
 ];
-function precoCliente(p) {
-  const d = CLIENT.desconto_base / 100;
+function precoCliente(p, desconto_base = 0) {
+  const d = desconto_base / 100;
   return p.preco * (1 - d);
 }
 
@@ -168,67 +182,97 @@ function Btn({ children, onClick, variant="primary", size="md", icon: Icon, full
 }
 
 /* ── ECRÃ: Acesso por Convite ── */
-function EcrãConvite({ onAccess }) {
-  const [code, setCode] = useState("");
-  const [error, setError] = useState(false);
+function EcrãLogin({ onAccess }) {
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
   const [shake, setShake] = useState(false);
+  const [resetMode, setResetMode] = useState(false);
+  const [resetSent, setResetSent] = useState(false);
 
-  const handleSubmit = () => {
-    if (code.trim().toUpperCase() === INVITE_CODE) {
-      onAccess();
-    } else {
-      setError(true);
-      setShake(true);
-      setTimeout(() => setShake(false), 500);
-    }
+  const handleLogin = async () => {
+    if (!email || !password) return setError("Preencha o email e a password.");
+    setLoading(true); setError("");
+    try {
+      const cred = await signInWithEmailAndPassword(auth, email, password);
+      // Verificar se cliente está activo no Firestore
+      const snap = await new Promise(resolve => {
+        const unsub = onSnapshot(
+          query(collection(db, "clientes")),
+          s => { unsub(); resolve(s); }
+        );
+      });
+      const clienteDoc = snap.docs.find(d => d.data().uid === cred.user.uid || d.data().email === email);
+      if (clienteDoc && clienteDoc.data().ativo === false) {
+        await signOut(auth);
+        setError("Conta desactivada. Contacte a EMPRO.");
+        setShake(true); setTimeout(() => setShake(false), 500);
+      } else {
+        onAccess(cred.user, clienteDoc?.data() || {});
+      }
+    } catch (e) {
+      const msgs = {
+        "auth/invalid-credential": "Email ou password incorrectos.",
+        "auth/user-not-found": "Email não encontrado.",
+        "auth/wrong-password": "Password incorrecta.",
+        "auth/too-many-requests": "Demasiadas tentativas. Tente mais tarde.",
+        "auth/invalid-email": "Email inválido.",
+      };
+      setError(msgs[e.code] || "Erro ao entrar. Tente novamente.");
+      setShake(true); setTimeout(() => setShake(false), 500);
+    } finally { setLoading(false); }
+  };
+
+  const handleReset = async () => {
+    if (!email) return setError("Introduza o seu email para recuperar a password.");
+    setLoading(true); setError("");
+    try {
+      const { sendPasswordResetEmail } = await import("firebase/auth");
+      await sendPasswordResetEmail(auth, email);
+      setResetSent(true);
+    } catch (e) {
+      setError("Não foi possível enviar o email. Verifique o endereço.");
+    } finally { setLoading(false); }
   };
 
   return (
     <div style={{ minHeight:"100vh", background: T.navyD, display:"flex", fontFamily: S.font, overflow:"hidden", position:"relative" }}>
+      <style>{`@keyframes shake { 0%,100%{transform:translateX(0)} 25%{transform:translateX(-8px)} 75%{transform:translateX(8px)} }`}</style>
       {/* Fundo geométrico */}
       <div style={{ position:"absolute", inset:0, overflow:"hidden", pointerEvents:"none" }}>
         <div style={{ position:"absolute", top:-120, right:-120, width:500, height:500, borderRadius:"50%", background:`${T.red}12`, border:`1px solid ${T.red}22` }} />
         <div style={{ position:"absolute", bottom:-80, left:-80, width:400, height:400, borderRadius:"50%", background:`${T.navyL}44`, border:`1px solid ${T.navyL}33` }} />
-        <div style={{ position:"absolute", top:"40%", left:"55%", width:200, height:200, borderRadius:"50%", background:`${T.red}08` }} />
-        {/* Grid lines */}
-        {[0,1,2,3,4].map(i => (
-          <div key={i} style={{ position:"absolute", left:0, right:0, top:`${i*25}%`, height:1, background:`${T.navyL}22` }} />
-        ))}
+        {[0,1,2,3,4].map(i => <div key={i} style={{ position:"absolute", left:0, right:0, top:`${i*25}%`, height:1, background:`${T.navyL}22` }} />)}
       </div>
 
       {/* Lado esquerdo */}
       <div style={{ flex:1, display:"flex", flexDirection:"column", justifyContent:"center", padding:"60px 80px", position:"relative" }}>
-        {/* Logo */}
         <div style={{ marginBottom:60 }}>
           <div style={{ fontSize:11, color: T.red, letterSpacing:4, fontFamily:"monospace", marginBottom:8 }}>DISTRIBUIDORA DE BEBIDAS</div>
           <div style={{ fontSize:48, fontWeight:800, color:"white", fontFamily: S.display, lineHeight:1 }}>EMPRO</div>
           <div style={{ fontSize:13, color: T.muted, letterSpacing:2, marginTop:4 }}>EMPRODALBE, LDA · DESDE 1990</div>
         </div>
-
         <div style={{ maxWidth:460 }}>
           <h1 style={{ fontSize:38, fontWeight:700, color:"white", fontFamily: S.display, lineHeight:1.2, marginBottom:16 }}>
-            A sua loja<br />
-            <span style={{ color: T.red }}>B2B privada.</span>
+            A sua loja<br /><span style={{ color: T.red }}>B2B privada.</span>
           </h1>
           <p style={{ fontSize:16, color: T.muted, lineHeight:1.7, marginBottom:40 }}>
-            Acesso exclusivo para clientes EMPRO.<br />
-            Encomende 24h/dia com os seus preços personalizados.
+            Acesso exclusivo para clientes EMPRO.<br />Encomende 24h/dia com os seus preços personalizados.
           </p>
-
-          {/* Features */}
           {[
-            { Icon: Tag,        text: "Preços personalizados para a sua empresa" },
-            { Icon: Package,    text: "Catálogo completo com stock em tempo real" },
-            { Icon: FileText,   text: "Histórico e faturas sempre disponíveis" },
+            { Icon: Tag,      text: "Preços personalizados para a sua empresa" },
+            { Icon: Package,  text: "Catálogo completo com stock em tempo real" },
+            { Icon: FileText, text: "Histórico e faturas sempre disponíveis" },
           ].map((f,i) => {
             const FIcon = f.Icon;
             return (
-            <div key={i} style={{ display:"flex", alignItems:"center", gap:14, marginBottom:16 }}>
-              <div style={{ width:36, height:36, borderRadius:10, background:`${T.red}22`, display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>
-                <FIcon size={16} color={T.red} />
+              <div key={i} style={{ display:"flex", alignItems:"center", gap:14, marginBottom:16 }}>
+                <div style={{ width:36, height:36, borderRadius:10, background:`${T.red}22`, display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>
+                  <FIcon size={16} color={T.red} />
+                </div>
+                <span style={{ fontSize:14, color: T.mutedL }}>{f.text}</span>
               </div>
-              <span style={{ fontSize:14, color: T.mutedL }}>{f.text}</span>
-            </div>
             );
           })}
         </div>
@@ -236,53 +280,70 @@ function EcrãConvite({ onAccess }) {
 
       {/* Lado direito — form */}
       <div style={{ width:460, display:"flex", alignItems:"center", justifyContent:"center", padding:40, position:"relative" }}>
-        <div style={{
-          background: T.bgWarm, borderRadius:24, padding:48, width:"100%",
-          boxShadow:"0 32px 80px rgba(0,0,0,.4)",
-          animation: shake ? "shake .4s ease" : "none",
-        }}>
-          <style>{`@keyframes shake { 0%,100%{transform:translateX(0)} 25%{transform:translateX(-8px)} 75%{transform:translateX(8px)} }`}</style>
+        <div style={{ background: T.bgWarm, borderRadius:24, padding:48, width:"100%", boxShadow:"0 32px 80px rgba(0,0,0,.4)", animation: shake ? "shake .4s ease" : "none" }}>
 
-          <div style={{ marginBottom:32 }}>
-            <div style={{ fontSize:22, fontWeight:700, color: T.navy, fontFamily: S.display, marginBottom:8 }}>Acesso restrito</div>
-            <div style={{ fontSize:14, color: T.muted }}>Introduza o código de convite enviado pelo seu comercial EMPRO.</div>
-          </div>
-
-          <div style={{ marginBottom:24 }}>
-            <label style={{ fontSize:11, fontWeight:700, color: T.muted, textTransform:"uppercase", letterSpacing:1.5, display:"block", marginBottom:8, fontFamily:"monospace" }}>
-              Código de Convite
-            </label>
-            <input
-              value={code}
-              onChange={e => { setCode(e.target.value.toUpperCase()); setError(false); }}
-              onKeyDown={e => e.key === "Enter" && handleSubmit()}
-              placeholder="Ex: EMPRO2025"
-              style={{
-                width:"100%", padding:"14px 16px", borderRadius:12, boxSizing:"border-box",
-                border: `2px solid ${error ? T.red : T.border}`,
-                fontSize:18, fontWeight:700, letterSpacing:3, textAlign:"center",
-                fontFamily:"monospace", color: T.navy, background: error ? `${T.red}08` : T.white,
-                outline:"none", transition:"border .2s",
-              }}
-            />
-            {error && (
-              <div style={{ display:"flex", alignItems:"center", gap:6, marginTop:8, color: T.red, fontSize:13 }}>
-                <AlertCircle size={14} /> Código inválido. Contacte o seu comercial.
-              </div>
-            )}
-          </div>
-
-          <Btn onClick={handleSubmit} full size="lg" icon={ArrowRight}>
-            Entrar na Loja
-          </Btn>
-
-          <div style={{ marginTop:24, padding:"16px", background: T.bg, borderRadius:12, display:"flex", gap:12, alignItems:"flex-start" }}>
-            <Phone size={14} color={T.muted} style={{ marginTop:2, flexShrink:0 }} />
-            <div>
-              <div style={{ fontSize:12, fontWeight:600, color: T.navy }}>Não tem código?</div>
-              <div style={{ fontSize:12, color: T.muted, marginTop:2 }}>Contacte a EMPRO: <strong style={{ color: T.navy }}>+351 289 400 450</strong> ou <strong style={{ color: T.navy }}>geral@empro.pt</strong></div>
+          {resetSent ? (
+            <div style={{ textAlign:"center" }}>
+              <div style={{ fontSize:40, marginBottom:16 }}>📧</div>
+              <div style={{ fontSize:20, fontWeight:700, color: T.navy, fontFamily: S.display, marginBottom:10 }}>Email enviado!</div>
+              <div style={{ fontSize:14, color: T.muted, marginBottom:28 }}>Verifique a sua caixa de entrada e siga as instruções para repor a password.</div>
+              <Btn onClick={() => { setResetMode(false); setResetSent(false); }} full>Voltar ao Login</Btn>
             </div>
-          </div>
+          ) : resetMode ? (
+            <>
+              <div style={{ marginBottom:28 }}>
+                <button onClick={() => setResetMode(false)} style={{ background:"none", border:"none", cursor:"pointer", color: T.muted, fontSize:13, marginBottom:16, display:"flex", alignItems:"center", gap:6 }}>
+                  ← Voltar
+                </button>
+                <div style={{ fontSize:22, fontWeight:700, color: T.navy, fontFamily: S.display, marginBottom:8 }}>Recuperar password</div>
+                <div style={{ fontSize:14, color: T.muted }}>Enviamos um link para repor a sua password.</div>
+              </div>
+              <div style={{ marginBottom:20 }}>
+                <label style={{ fontSize:11, fontWeight:700, color: T.muted, textTransform:"uppercase", letterSpacing:1.5, display:"block", marginBottom:8, fontFamily:"monospace" }}>Email</label>
+                <input type="email" value={email} onChange={e => { setEmail(e.target.value); setError(""); }} placeholder="o-seu@email.pt"
+                  style={{ width:"100%", padding:"13px 16px", borderRadius:12, boxSizing:"border-box", border:`2px solid ${error ? T.red : T.border}`, fontSize:15, color: T.navy, background: T.white, outline:"none" }} />
+              </div>
+              {error && <div style={{ color: T.red, fontSize:13, marginBottom:14, display:"flex", alignItems:"center", gap:6 }}><AlertCircle size={14}/>{error}</div>}
+              <Btn onClick={handleReset} disabled={loading} full size="lg">{loading ? "A enviar..." : "Enviar link de recuperação"}</Btn>
+            </>
+          ) : (
+            <>
+              <div style={{ marginBottom:32 }}>
+                <div style={{ fontSize:22, fontWeight:700, color: T.navy, fontFamily: S.display, marginBottom:8 }}>Bem-vindo</div>
+                <div style={{ fontSize:14, color: T.muted }}>Entre com as credenciais enviadas pelo seu comercial EMPRO.</div>
+              </div>
+
+              <div style={{ marginBottom:18 }}>
+                <label style={{ fontSize:11, fontWeight:700, color: T.muted, textTransform:"uppercase", letterSpacing:1.5, display:"block", marginBottom:8, fontFamily:"monospace" }}>Email</label>
+                <input type="email" value={email} onChange={e => { setEmail(e.target.value); setError(""); }} onKeyDown={e => e.key === "Enter" && handleLogin()} placeholder="o-seu@email.pt"
+                  style={{ width:"100%", padding:"13px 16px", borderRadius:12, boxSizing:"border-box", border:`2px solid ${error ? T.red : T.border}`, fontSize:15, color: T.navy, background: error ? `${T.red}08` : T.white, outline:"none", transition:"border .2s" }} />
+              </div>
+
+              <div style={{ marginBottom:10 }}>
+                <label style={{ fontSize:11, fontWeight:700, color: T.muted, textTransform:"uppercase", letterSpacing:1.5, display:"block", marginBottom:8, fontFamily:"monospace" }}>Password</label>
+                <input type="password" value={password} onChange={e => { setPassword(e.target.value); setError(""); }} onKeyDown={e => e.key === "Enter" && handleLogin()} placeholder="••••••••"
+                  style={{ width:"100%", padding:"13px 16px", borderRadius:12, boxSizing:"border-box", border:`2px solid ${error ? T.red : T.border}`, fontSize:15, color: T.navy, background: error ? `${T.red}08` : T.white, outline:"none", transition:"border .2s" }} />
+              </div>
+
+              <button onClick={() => { setResetMode(true); setError(""); }} style={{ background:"none", border:"none", cursor:"pointer", color: T.muted, fontSize:12, marginBottom:22, textDecoration:"underline" }}>
+                Esqueci a password
+              </button>
+
+              {error && <div style={{ color: T.red, fontSize:13, marginBottom:16, display:"flex", alignItems:"center", gap:6 }}><AlertCircle size={14}/>{error}</div>}
+
+              <Btn onClick={handleLogin} disabled={loading} full size="lg" icon={ArrowRight}>
+                {loading ? "A entrar..." : "Entrar na Loja"}
+              </Btn>
+
+              <div style={{ marginTop:24, padding:"14px 16px", background: T.bg, borderRadius:12, display:"flex", gap:12, alignItems:"flex-start" }}>
+                <Phone size={14} color={T.muted} style={{ marginTop:2, flexShrink:0 }} />
+                <div>
+                  <div style={{ fontSize:12, fontWeight:600, color: T.navy }}>Ainda não tem acesso?</div>
+                  <div style={{ fontSize:12, color: T.muted, marginTop:2 }}>Contacte a EMPRO: <strong style={{ color: T.navy }}>+351 289 400 450</strong></div>
+                </div>
+              </div>
+            </>
+          )}
         </div>
       </div>
     </div>
@@ -290,8 +351,8 @@ function EcrãConvite({ onAccess }) {
 }
 
 /* ── ECRÃ: Dashboard ── */
-function EcrãDashboard({ onNav, cart }) {
-  const pct = Math.round(CLIENT.saldo / CLIENT.limite * 100);
+function EcrãDashboard({ onNav, cart, cliente = CLIENT }) {
+  const pct = Math.round(cliente.saldo / cliente.limite * 100);
 
   return (
     <div>
@@ -301,11 +362,11 @@ function EcrãDashboard({ onNav, cart }) {
         <div style={{ position:"absolute", bottom:-40, right:120, width:160, height:160, borderRadius:"50%", background:`${T.navyL}44` }} />
         <div style={{ position:"relative" }}>
           <div style={{ fontSize:12, color: T.mutedL, letterSpacing:2, textTransform:"uppercase", fontFamily:"monospace", marginBottom:6 }}>Bem-vindo de volta</div>
-          <h1 style={{ fontSize:28, fontWeight:700, color:"white", fontFamily: S.display, margin:"0 0 4px" }}>{CLIENT.name}</h1>
+          <h1 style={{ fontSize:28, fontWeight:700, color:"white", fontFamily: S.display, margin:"0 0 4px" }}>{cliente.name}</h1>
           <div style={{ display:"flex", gap:16, alignItems:"center", marginTop:8 }}>
-            <div style={{ display:"flex", alignItems:"center", gap:6, color: T.mutedL, fontSize:13 }}><MapPin size={13} />{CLIENT.local}</div>
-            <div style={{ display:"flex", alignItems:"center", gap:6, color: T.mutedL, fontSize:13 }}><Building2 size={13} />NIF {CLIENT.nif}</div>
-            <Badge color={T.orange}>Tipo {CLIENT.tipo}</Badge>
+            <div style={{ display:"flex", alignItems:"center", gap:6, color: T.mutedL, fontSize:13 }}><MapPin size={13} />{cliente.local}</div>
+            <div style={{ display:"flex", alignItems:"center", gap:6, color: T.mutedL, fontSize:13 }}><Building2 size={13} />NIF {cliente.nif}</div>
+            <Badge color={T.orange}>Tipo {cliente.tipo}</Badge>
           </div>
         </div>
       </div>
@@ -313,9 +374,9 @@ function EcrãDashboard({ onNav, cart }) {
       {/* KPIs */}
       <div style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:14, marginBottom:24 }}>
         {[
-          { label:"Saldo em Aberto", value:`€${fmt(CLIENT.saldo)}`, sub:"em faturas por vencer", color: T.red,    Icon: Euro,       warn: pct > 70 },
-          { label:"Crédito Disponível", value:`€${fmt(CLIENT.credito)}`, sub:`de €${fmt(CLIENT.limite)} de limite`, color: T.green, Icon: TrendingUp, warn: false },
-          { label:"Desconto Personalizado", value:`${CLIENT.desconto_base}%`, sub:"aplicado a todo o catálogo", color: T.navy, Icon: Tag, warn: false },
+          { label:"Saldo em Aberto", value:`€${fmt(cliente.saldo)}`, sub:"em faturas por vencer", color: T.red,    Icon: Euro,       warn: pct > 70 },
+          { label:"Crédito Disponível", value:`€${fmt(cliente.credito)}`, sub:`de €${fmt(cliente.limite)} de limite`, color: T.green, Icon: TrendingUp, warn: false },
+          { label:"Desconto Personalizado", value:`${cliente.desconto_base}%`, sub:"aplicado a todo o catálogo", color: T.navy, Icon: Tag, warn: false },
         ].map((k,i) => {
           const KIcon = k.Icon;
           return (
@@ -390,7 +451,7 @@ function EcrãDashboard({ onNav, cart }) {
 }
 
 /* ── ECRÃ: Catálogo ── */
-function EcrãCatalogo({ produtos, loadingProdutos, cart, onCart, favorites, onToggleFav }) {
+function EcrãCatalogo({ produtos, loadingProdutos, cart, onCart, favorites, onToggleFav, cliente = CLIENT }) {
   const [familia, setFamilia] = useState("todos");
   const [search, setSearch] = useState("");
   const [showPromo, setShowPromo] = useState(false);
@@ -457,7 +518,7 @@ function EcrãCatalogo({ produtos, loadingProdutos, cart, onCart, favorites, onT
       {/* Grid */}
       <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill, minmax(280px, 1fr))", gap:14 }}>
         {filtered.map(p => {
-          const preco = precoCliente(p);
+          const preco = precoCliente(p, cliente.desconto_base);
           const precoIva = preco * (1 + p.iva/100);
           const inC = inCart(p.id);
           const famColor = FAMILIAS.find(f => f.id === p.familia)?.color || T.navy;
@@ -515,9 +576,9 @@ function EcrãCatalogo({ produtos, loadingProdutos, cart, onCart, favorites, onT
                       <div style={{ fontSize:10, color: T.muted }}>c/ IVA {p.iva}%</div>
                     </div>
                   </div>
-                  {CLIENT.desconto_base > 0 && (
+                  {cliente.desconto_base > 0 && (
                     <div style={{ marginTop:6, fontSize:11, color: T.green, fontWeight:600 }}>
-                      ✓ Desconto {CLIENT.desconto_base}% aplicado
+                      ✓ Desconto {cliente.desconto_base}% aplicado
                     </div>
                   )}
                 </div>
@@ -550,7 +611,7 @@ function EcrãCatalogo({ produtos, loadingProdutos, cart, onCart, favorites, onT
 }
 
 /* ── ECRÃ: Carrinho ── */
-function EcrãCarrinho({ cart, onUpdateCart, onRemove, onNav, onCheckout }) {
+function EcrãCarrinho({ cart, onUpdateCart, onRemove, onNav, onCheckout, cliente = CLIENT }) {
   const [obs, setObs] = useState("");
   const [success, setSuccess] = useState(false);
 
@@ -562,10 +623,10 @@ function EcrãCarrinho({ cart, onUpdateCart, onRemove, onNav, onCheckout }) {
     // Guarda encomenda no Firebase
     try {
       const encomenda = {
-        cliente: CLIENT.name,
-        nif: CLIENT.nif,
-        local: CLIENT.local,
-        comercial: CLIENT.comercial,
+        cliente: cliente.name,
+        nif: cliente.nif,
+        local: cliente.local,
+        comercial: cliente.comercial,
         items: cart.map(c => ({
           id: c.id,
           nome: c.nome,
@@ -590,8 +651,8 @@ function EcrãCarrinho({ cart, onUpdateCart, onRemove, onNav, onCheckout }) {
     // Abre email de confirmação
     const linhas = cart.map(c => `- ${c.nome} × ${c.qty} ${c.unidade} = €${fmt(precoCliente(c)*c.qty)}`).join("%0D%0A");
     const obsLine = obs ? `%0D%0AObservações: ${encodeURIComponent(obs)}` : "";
-    const subject = encodeURIComponent(`Nova Encomenda — ${CLIENT.name} — ${new Date().toLocaleDateString("pt-PT")}`);
-    const body = encodeURIComponent(`Boa tarde,\n\nO cliente ${CLIENT.name} (NIF ${CLIENT.nif}) submeteu uma nova encomenda:\n\n`)
+    const subject = encodeURIComponent(`Nova Encomenda — ${cliente.name} — ${new Date().toLocaleDateString("pt-PT")}`);
+    const body = encodeURIComponent(`Boa tarde,\n\nO cliente ${cliente.name} (NIF ${cliente.nif}) submeteu uma nova encomenda:\n\n`)
       + linhas
       + `%0D%0A%0D%0ASubtotal s/ IVA: €${fmt(subtotal)}%0D%0AIVA: €${fmt(ivaTotal)}%0D%0ATotal c/ IVA: €${fmt(total)}`
       + obsLine
@@ -607,7 +668,7 @@ function EcrãCarrinho({ cart, onUpdateCart, onRemove, onNav, onCheckout }) {
         <CheckCircle size={40} color={T.green} />
       </div>
       <h2 style={{ fontFamily: S.display, color: T.navy, fontSize:28, marginBottom:8 }}>Encomenda enviada!</h2>
-      <p style={{ color: T.muted, marginBottom:8, fontSize:15 }}>O seu comercial <strong>{CLIENT.comercial}</strong> vai confirmar em breve.</p>
+      <p style={{ color: T.muted, marginBottom:8, fontSize:15 }}>O seu comercial <strong>{cliente.comercial}</strong> vai confirmar em breve.</p>
       <div style={{ display:"flex", alignItems:"center", gap:7, background:`${T.blue}11`, border:`1px solid ${T.blue}33`, borderRadius:10, padding:"10px 18px", marginBottom:32, color:T.blue, fontSize:13 }}>
         <Mail size={14} />
         Email de confirmação aberto no seu cliente de correio.
@@ -687,7 +748,7 @@ function EcrãCarrinho({ cart, onUpdateCart, onRemove, onNav, onCheckout }) {
           </Btn>
 
           <div style={{ marginTop:12, fontSize:12, color: T.muted, textAlign:"center" }}>
-            O seu comercial <strong>{CLIENT.comercial}</strong> irá confirmar.
+            O seu comercial <strong>{cliente.comercial}</strong> irá confirmar.
           </div>
         </div>
       </div>
@@ -725,7 +786,7 @@ function EcrãHistorico({ onRepetir, onNav }) {
           <div style={{ fontSize:12, color: T.muted }}>Volume total comprado</div>
         </div>
         <div style={{ background: T.white, borderRadius:14, padding:"18px 20px", border:`1px solid ${T.border}`, borderTop:`3px solid ${T.green}` }}>
-          <div style={{ fontSize:22, fontWeight:800, color: T.green, fontFamily: S.display }}>€{fmt(CLIENT.saldo)}</div>
+          <div style={{ fontSize:22, fontWeight:800, color: T.green, fontFamily: S.display }}>€{fmt(cliente.saldo)}</div>
           <div style={{ fontSize:12, color: T.muted }}>Saldo em aberto</div>
         </div>
       </div>
@@ -772,14 +833,14 @@ function EcrãHistorico({ onRepetir, onNav }) {
 }
 
 /* ── ECRÃ: Faturas ── */
-function EcrãFaturas() {
+function EcrãFaturas({ cliente = CLIENT }) {
   const [filtro, setFiltro] = useState("todas");
   const [downloading, setDownloading] = useState(null);
 
   const totalDivida  = FATURAS.filter(f => f.estado !== "paga").reduce((s,f) => s+f.total, 0);
   const totalVencido = FATURAS.filter(f => f.vencida).reduce((s,f) => s+f.total, 0);
-  const plafond      = CLIENT.limite - CLIENT.saldo;
-  const pctCredito   = Math.round(CLIENT.saldo / CLIENT.limite * 100);
+  const plafond      = cliente.limite - cliente.saldo;
+  const pctCredito   = Math.round(cliente.saldo / cliente.limite * 100);
 
   const filtered = FATURAS.filter(f => {
     if (filtro === "pendentes") return f.estado === "pendente";
@@ -805,9 +866,9 @@ Data:   ${fatura.data}
 Venc.:  ${fatura.venc}
 ${"─".repeat(50)}
 
-Cliente: ${CLIENT.name}
-NIF:     ${CLIENT.nif}
-Morada:  ${CLIENT.local}
+Cliente: ${cliente.name}
+NIF:     ${cliente.nif}
+Morada:  ${cliente.local}
 ${"─".repeat(50)}
 
 Encomenda: ${fatura.enc}
@@ -898,8 +959,8 @@ EMPRO — Distribuidora de Bebidas HoReCa
             <div style={{ width:`${pctCredito}%`, height:"100%", background: pctCredito>80?T.red:pctCredito>50?T.orange:T.green, borderRadius:3, transition:"width .5s" }} />
           </div>
           <div style={{ display:"flex", justifyContent:"space-between", fontSize:11, color:T.muted }}>
-            <span>Utilizado: €{fmt(CLIENT.saldo)}</span>
-            <span>Limite: €{fmt(CLIENT.limite)}</span>
+            <span>Utilizado: €{fmt(cliente.saldo)}</span>
+            <span>Limite: €{fmt(cliente.limite)}</span>
           </div>
         </div>
       </div>
@@ -1190,8 +1251,8 @@ function EcrãVasilhame() {
 }
 
 /* ── ECRÃ: Perfil ── */
-function EcrãPerfil({ onNav }) {
-  const pct = Math.round(CLIENT.saldo / CLIENT.limite * 100);
+function EcrãPerfil({ onNav, cliente = CLIENT, onLogout }) {
+  const pct = Math.round(cliente.saldo / cliente.limite * 100);
   return (
     <div>
       <div style={{ marginBottom:24 }}>
@@ -1210,11 +1271,11 @@ function EcrãPerfil({ onNav }) {
             <div style={{ fontSize:16, fontWeight:700, color:T.navy, fontFamily:S.display }}>Dados da Empresa</div>
           </div>
           {[
-            { label:"Nome",         value: CLIENT.name },
-            { label:"NIF",          value: CLIENT.nif },
-            { label:"Localidade",   value: CLIENT.local },
-            { label:"Tipo de Cliente", value: `Tipo ${CLIENT.tipo}` },
-            { label:"Desconto Base",value: `${CLIENT.desconto_base}%` },
+            { label:"Nome",         value: cliente.name },
+            { label:"NIF",          value: cliente.nif },
+            { label:"Localidade",   value: cliente.local },
+            { label:"Tipo de Cliente", value: `Tipo ${cliente.tipo}` },
+            { label:"Desconto Base",value: `${cliente.desconto_base}%` },
           ].map(f => (
             <div key={f.label} style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"10px 0", borderBottom:`1px solid ${T.border}` }}>
               <span style={{ fontSize:12, color:T.muted, fontWeight:600, textTransform:"uppercase", letterSpacing:0.8, fontFamily:"monospace" }}>{f.label}</span>
@@ -1222,7 +1283,7 @@ function EcrãPerfil({ onNav }) {
             </div>
           ))}
           <div style={{ marginTop:16 }}>
-            <Btn variant="secondary" size="sm" icon={Mail} onClick={() => window.open(`mailto:geral@empro.pt?subject=Atualização de dados — ${CLIENT.name}&body=Boa tarde,%0D%0A%0D%0AGostaria de atualizar os seguintes dados da minha conta:%0D%0A%0D%0A`)}>
+            <Btn variant="secondary" size="sm" icon={Mail} onClick={() => window.open(`mailto:geral@empro.pt?subject=Atualização de dados — ${cliente.name}&body=Boa tarde,%0D%0A%0D%0AGostaria de atualizar os seguintes dados da minha conta:%0D%0A%0D%0A`)}>
               Solicitar atualização de dados
             </Btn>
           </div>
@@ -1239,11 +1300,11 @@ function EcrãPerfil({ onNav }) {
 
           <div style={{ display:"flex", gap:12, marginBottom:20 }}>
             <div style={{ flex:1, background:T.bg, borderRadius:12, padding:"14px 16px", textAlign:"center" }}>
-              <div style={{ fontSize:22, fontWeight:800, color:T.red, fontFamily:S.display }}>€{fmt(CLIENT.saldo)}</div>
+              <div style={{ fontSize:22, fontWeight:800, color:T.red, fontFamily:S.display }}>€{fmt(cliente.saldo)}</div>
               <div style={{ fontSize:11, color:T.muted, marginTop:2 }}>Saldo em aberto</div>
             </div>
             <div style={{ flex:1, background:T.bg, borderRadius:12, padding:"14px 16px", textAlign:"center" }}>
-              <div style={{ fontSize:22, fontWeight:800, color:T.green, fontFamily:S.display }}>€{fmt(CLIENT.credito)}</div>
+              <div style={{ fontSize:22, fontWeight:800, color:T.green, fontFamily:S.display }}>€{fmt(cliente.credito)}</div>
               <div style={{ fontSize:11, color:T.muted, marginTop:2 }}>Crédito disponível</div>
             </div>
           </div>
@@ -1257,7 +1318,7 @@ function EcrãPerfil({ onNav }) {
               <div style={{ width:`${pct}%`, height:"100%", background: pct>80?T.red:pct>50?T.orange:T.green, borderRadius:4, transition:"width .5s" }} />
             </div>
             <div style={{ display:"flex", justifyContent:"space-between", marginTop:5 }}>
-              <span style={{ fontSize:11, color:T.muted }}>Limite: €{fmt(CLIENT.limite)}</span>
+              <span style={{ fontSize:11, color:T.muted }}>Limite: €{fmt(cliente.limite)}</span>
               <span style={{ fontSize:11, color:T.muted }}>Prazo: 30 dias</span>
             </div>
           </div>
@@ -1278,20 +1339,20 @@ function EcrãPerfil({ onNav }) {
 
           <div style={{ display:"flex", alignItems:"center", gap:16, marginBottom:20 }}>
             <div style={{ width:56, height:56, borderRadius:"50%", background:`linear-gradient(135deg,${T.navy},${T.navyL})`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:22, color:"white", fontWeight:700, fontFamily:S.display, flexShrink:0 }}>
-              {CLIENT.comercial.split(" ").map(n=>n[0]).join("")}
+              {cliente.comercial.split(" ").map(n=>n[0]).join("")}
             </div>
             <div>
-              <div style={{ fontSize:17, fontWeight:700, color:T.navy, fontFamily:S.display }}>{CLIENT.comercial}</div>
+              <div style={{ fontSize:17, fontWeight:700, color:T.navy, fontFamily:S.display }}>{cliente.comercial}</div>
               <div style={{ fontSize:12, color:T.muted, marginTop:2 }}>Zona Algarve · EMPRO</div>
               <Badge color={T.green} small>Disponível</Badge>
             </div>
           </div>
 
           <div style={{ display:"flex", gap:10 }}>
-            <Btn full icon={Phone} onClick={() => window.open(`tel:${CLIENT.phone}`)}>
-              {CLIENT.phone}
+            <Btn full icon={Phone} onClick={() => window.open(`tel:${cliente.phone}`)}>
+              {cliente.phone}
             </Btn>
-            <Btn variant="secondary" full icon={Mail} onClick={() => window.open(`mailto:geral@empro.pt?subject=Contacto de ${CLIENT.name}`)}>
+            <Btn variant="secondary" full icon={Mail} onClick={() => window.open(`mailto:geral@empro.pt?subject=Contacto de ${cliente.name}`)}>
               Email
             </Btn>
           </div>
@@ -1327,23 +1388,47 @@ function EcrãPerfil({ onNav }) {
               );
             })}
           </div>
+          {onLogout && (
+            <button onClick={onLogout} style={{ width:"100%", marginTop:14, padding:"12px 16px", borderRadius:10, border:`1px solid ${T.border}`, background:"white", cursor:"pointer", display:"flex", alignItems:"center", gap:10, color:T.red, fontSize:14, fontWeight:600 }}
+              onMouseEnter={e=>{ e.currentTarget.style.background=`${T.red}08`; }}
+              onMouseLeave={e=>{ e.currentTarget.style.background="white"; }}>
+              <div style={{ width:32, height:32, borderRadius:8, background:`${T.red}18`, display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>
+                <LogOut size={15} color={T.red} />
+              </div>
+              <span>Terminar Sessão</span>
+            </button>
+          )}
         </div>
       </div>
     </div>
   );
 }
-
-/* ── LAYOUT PRINCIPAL ── */
 export default function LojaEmpro() {
-  const [acesso,    setAcesso]    = useState(false);
-  const [page,      setPage]      = useState("dashboard");
-  const [cart,      setCart]      = useState([]);
-  const [favorites, setFavorites] = useState([]);
-  const [produtos,  setProdutos]  = useState(PRODUTOS);
+  const [utilizador,  setUtilizador]  = useState(null);   // Firebase user
+  const [clienteData, setClienteData] = useState(null);   // dados do Firestore
+  const [page,        setPage]        = useState("dashboard");
+  const [cart,        setCart]        = useState([]);
+  const [favorites,   setFavorites]   = useState([]);
+  const [produtos,    setProdutos]    = useState(PRODUTOS);
   const [loadingProdutos, setLoadingProdutos] = useState(true);
+  const authReady = useAuthReady();
+
+  // Ouvir alterações de autenticação
+  useEffect(() => {
+    const unsub = onAuthStateChanged(auth, user => {
+      if (user && !user.isAnonymous) {
+        setUtilizador(user);
+      } else {
+        setUtilizador(null);
+        setClienteData(null);
+      }
+    });
+    return unsub;
+  }, []);
 
   // Carregar produtos do Firestore em tempo real
   useEffect(() => {
+    if (!authReady) return;
     const q = query(collection(db, "produtos"), orderBy("nome"));
     const unsub = onSnapshot(q, snap => {
       if (snap.docs.length > 0) {
@@ -1373,7 +1458,21 @@ export default function LojaEmpro() {
       setLoadingProdutos(false);
     }, () => setLoadingProdutos(false));
     return unsub;
-  }, []);
+  }, [authReady]);
+
+  const handleLogin = (user, dados) => {
+    setUtilizador(user);
+    setClienteData(dados);
+    setPage("dashboard");
+  };
+
+  const handleLogout = async () => {
+    await signOut(auth);
+    setUtilizador(null);
+    setClienteData(null);
+    setCart([]);
+    setPage("dashboard");
+  };
 
   const addToCart = (prod, qty) => {
     setCart(c => {
@@ -1383,9 +1482,7 @@ export default function LojaEmpro() {
     });
   };
 
-  // Repetir encomenda: adiciona todos os artigos do histórico ao carrinho
   const repetirEncomenda = (enc) => {
-    // Mapeia nomes do histórico para produtos reais
     enc.prods.forEach(linha => {
       const match = PRODUTOS.find(p => linha.toLowerCase().includes(p.nome.toLowerCase().split(" ")[0].toLowerCase()));
       if (match) {
@@ -1407,7 +1504,18 @@ export default function LojaEmpro() {
   const removeFromCart = (id) => setCart(c => c.filter(x => x.id !== id));
   const clearCart = () => setCart([]);
 
-  if (!acesso) return <EcrãConvite onAccess={() => setAcesso(true)} />;
+  // Dados do cliente activo (do Firebase ou dados fixos como fallback)
+  const clienteActivo = clienteData ? {
+    ...CLIENT,
+    nome: clienteData.nome || CLIENT.nome,
+    nif: clienteData.nif || CLIENT.nif,
+    tipo: clienteData.tipo || CLIENT.tipo,
+    desconto_base: clienteData.desconto || CLIENT.desconto_base,
+    comercial: clienteData.comercial || CLIENT.comercial,
+    email: utilizador?.email || CLIENT.email,
+  } : CLIENT;
+
+  if (!utilizador) return <EcrãLogin onAccess={handleLogin} />;
 
   const cartCount = cart.reduce((s,c) => s+c.qty, 0);
 
@@ -1433,7 +1541,7 @@ export default function LojaEmpro() {
               <div style={{ fontSize:20, fontWeight:800, color: T.navy, fontFamily: S.display, lineHeight:1 }}>EMPRO</div>
             </div>
             <div style={{ width:1, height:28, background: T.border }} />
-            <div style={{ fontSize:12, color: T.muted }}>{CLIENT.name}</div>
+            <div style={{ fontSize:12, color: T.muted }}>{cliente.name}</div>
           </div>
 
           {/* Nav central */}
@@ -1461,11 +1569,11 @@ export default function LojaEmpro() {
           {/* Right */}
           <div style={{ display:"flex", alignItems:"center", gap:12 }}>
             <div style={{ textAlign:"right" }}>
-              <div style={{ fontSize:12, fontWeight:600, color: T.navy }}>{CLIENT.name}</div>
-              <div style={{ fontSize:10, color: T.muted }}>Tipo {CLIENT.tipo} · {CLIENT.desconto_base}% desconto</div>
+              <div style={{ fontSize:12, fontWeight:600, color: T.navy }}>{cliente.name}</div>
+              <div style={{ fontSize:10, color: T.muted }}>Tipo {cliente.tipo} · {cliente.desconto_base}% desconto</div>
             </div>
-            <button onClick={() => setAcesso(false)} style={{ background:"none", border:`1px solid ${T.border}`, borderRadius:8, padding:"7px 10px", cursor:"pointer", color: T.muted, display:"flex", alignItems:"center" }}>
-              <LogOut size={14} />
+            <button onClick={handleLogout} style={{ background:"none", border:`1px solid ${T.border}`, borderRadius:8, padding:"7px 10px", cursor:"pointer", color: T.muted, display:"flex", alignItems:"center", gap:6, fontSize:12 }}>
+              <LogOut size={14} /> Sair
             </button>
           </div>
         </div>
@@ -1473,13 +1581,13 @@ export default function LojaEmpro() {
 
       {/* Conteúdo */}
       <div style={{ maxWidth:1200, margin:"0 auto", padding:"32px 32px 60px" }}>
-        {page === "dashboard" && <EcrãDashboard onNav={setPage} cart={cart} />}
-        {page === "catalogo"  && <EcrãCatalogo produtos={produtos} loadingProdutos={loadingProdutos} cart={cart} onCart={addToCart} favorites={favorites} onToggleFav={toggleFavorite} />}
-        {page === "carrinho"  && <EcrãCarrinho cart={cart} onUpdateCart={updateCart} onRemove={removeFromCart} onNav={setPage} onCheckout={clearCart} />}
-        {page === "faturas"   && <EcrãFaturas />}
+        {page === "dashboard" && <EcrãDashboard onNav={setPage} cart={cart} cliente={clienteActivo} />}
+        {page === "catalogo"  && <EcrãCatalogo produtos={produtos} loadingProdutos={loadingProdutos} cart={cart} onCart={addToCart} favorites={favorites} onToggleFav={toggleFavorite} cliente={clienteActivo} />}
+        {page === "carrinho"  && <EcrãCarrinho cart={cart} onUpdateCart={updateCart} onRemove={removeFromCart} onNav={setPage} onCheckout={clearCart} cliente={clienteActivo} />}
+        {page === "faturas"   && <EcrãFaturas cliente={clienteActivo} />}
         {page === "vasilhame" && <EcrãVasilhame />}
         {page === "historico" && <EcrãHistorico onRepetir={repetirEncomenda} onNav={setPage} />}
-        {page === "perfil"    && <EcrãPerfil onNav={setPage} />}
+        {page === "perfil"    && <EcrãPerfil onNav={setPage} cliente={clienteActivo} onLogout={handleLogout} />}
       </div>
     </div>
   );
