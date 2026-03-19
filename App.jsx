@@ -32,8 +32,8 @@ const authReadyPromise = new Promise(resolve => {
 });
 
 function useAuthReady() {
-  const [ready, setReady] = React.useState(authReady);
-  React.useEffect(() => {
+  const [ready, setReady] = useState(authReady);
+  useEffect(() => {
     if (!authReady) authReadyPromise.then(() => setReady(true));
   }, []);
   return ready;
@@ -1404,8 +1404,9 @@ function EcrãPerfil({ onNav, cliente = CLIENT, onLogout }) {
   );
 }
 export default function LojaEmpro() {
-  const [utilizador,  setUtilizador]  = useState(null);   // Firebase user
-  const [clienteData, setClienteData] = useState(null);   // dados do Firestore
+  const [utilizador,  setUtilizador]  = useState(null);
+  const [clienteData, setClienteData] = useState(null);
+  const [authLoading, setAuthLoading] = useState(true); // aguarda verificação inicial
   const [page,        setPage]        = useState("dashboard");
   const [cart,        setCart]        = useState([]);
   const [favorites,   setFavorites]   = useState([]);
@@ -1422,6 +1423,7 @@ export default function LojaEmpro() {
         setUtilizador(null);
         setClienteData(null);
       }
+      setAuthLoading(false); // sessão verificada
     });
     return unsub;
   }, []);
@@ -1514,6 +1516,16 @@ export default function LojaEmpro() {
     comercial: clienteData.comercial || CLIENT.comercial,
     email: utilizador?.email || CLIENT.email,
   } : CLIENT;
+
+  if (authLoading) return (
+    <div style={{ minHeight:"100vh", background: T.navyD, display:"flex", alignItems:"center", justifyContent:"center", fontFamily: S.font }}>
+      <div style={{ textAlign:"center" }}>
+        <div style={{ fontSize:32, fontWeight:800, color:"white", fontFamily: S.display, marginBottom:16 }}>EMPRO</div>
+        <div style={{ width:40, height:40, border:"3px solid rgba(255,255,255,.2)", borderTopColor: T.red, borderRadius:"50%", animation:"spin 0.8s linear infinite", margin:"0 auto" }} />
+        <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+      </div>
+    </div>
+  );
 
   if (!utilizador) return <EcrãLogin onAccess={handleLogin} />;
 
