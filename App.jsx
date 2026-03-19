@@ -615,8 +615,8 @@ function EcrãCarrinho({ cart, onUpdateCart, onRemove, onNav, onCheckout, client
   const [obs, setObs] = useState("");
   const [success, setSuccess] = useState(false);
 
-  const subtotal = cart.reduce((s,c) => s + precoCliente(c) * c.qty, 0);
-  const ivaTotal = cart.reduce((s,c) => s + precoCliente(c) * c.qty * (c.iva/100), 0);
+  const subtotal = cart.reduce((s,c) => s + precoCliente(c, cliente.desconto_base) * c.qty, 0);
+  const ivaTotal = cart.reduce((s,c) => s + precoCliente(c, cliente.desconto_base) * c.qty * (c.iva/100), 0);
   const total    = subtotal + ivaTotal;
 
   const handleOrder = async () => {
@@ -633,8 +633,8 @@ function EcrãCarrinho({ cart, onUpdateCart, onRemove, onNav, onCheckout, client
           ref: c.ref,
           qty: c.qty,
           unidade: c.unidade,
-          precoUnit: precoCliente(c),
-          total: precoCliente(c) * c.qty,
+          precoUnit: precoCliente(c, cliente.desconto_base),
+          total: precoCliente(c, cliente.desconto_base) * c.qty,
         })),
         subtotal,
         iva: ivaTotal,
@@ -649,7 +649,7 @@ function EcrãCarrinho({ cart, onUpdateCart, onRemove, onNav, onCheckout, client
     }
 
     // Abre email de confirmação
-    const linhas = cart.map(c => `- ${c.nome} × ${c.qty} ${c.unidade} = €${fmt(precoCliente(c)*c.qty)}`).join("%0D%0A");
+    const linhas = cart.map(c => `- ${c.nome} × ${c.qty} ${c.unidade} = €${fmt(precoCliente(c, cliente.desconto_base)*c.qty)}`).join("%0D%0A");
     const obsLine = obs ? `%0D%0AObservações: ${encodeURIComponent(obs)}` : "";
     const subject = encodeURIComponent(`Nova Encomenda — ${cliente.name} — ${new Date().toLocaleDateString("pt-PT")}`);
     const body = encodeURIComponent(`Boa tarde,\n\nO cliente ${cliente.name} (NIF ${cliente.nif}) submeteu uma nova encomenda:\n\n`)
@@ -697,7 +697,7 @@ function EcrãCarrinho({ cart, onUpdateCart, onRemove, onNav, onCheckout, client
         {/* Itens */}
         <div style={{ background: T.white, borderRadius:16, border:`1px solid ${T.border}`, overflow:"hidden" }}>
           {cart.map((item,i) => {
-            const preco = precoCliente(item);
+            const preco = precoCliente(item, cliente.desconto_base);
             return (
               <div key={item.id} style={{ display:"grid", gridTemplateColumns:"1fr auto auto auto", gap:16, padding:"16px 20px", borderBottom: i<cart.length-1 ? `1px solid ${T.border}` : "none", alignItems:"center" }}>
                 <div>
@@ -757,7 +757,7 @@ function EcrãCarrinho({ cart, onUpdateCart, onRemove, onNav, onCheckout, client
 }
 
 /* ── ECRÃ: Histórico ── */
-function EcrãHistorico({ onRepetir, onNav }) {
+function EcrãHistorico({ onRepetir, onNav, cliente = CLIENT }) {
   const [expanded, setExpanded] = useState(null);
   const [repetido, setRepetido] = useState(null);
   const estadoColor = { entregue: T.green, confirmada: T.orange, pendente: T.muted };
@@ -1598,7 +1598,7 @@ export default function LojaEmpro() {
         {page === "carrinho"  && <EcrãCarrinho cart={cart} onUpdateCart={updateCart} onRemove={removeFromCart} onNav={setPage} onCheckout={clearCart} cliente={clienteActivo} />}
         {page === "faturas"   && <EcrãFaturas cliente={clienteActivo} />}
         {page === "vasilhame" && <EcrãVasilhame />}
-        {page === "historico" && <EcrãHistorico onRepetir={repetirEncomenda} onNav={setPage} />}
+        {page === "historico" && <EcrãHistorico onRepetir={repetirEncomenda} onNav={setPage} cliente={clienteActivo} />}
         {page === "perfil"    && <EcrãPerfil onNav={setPage} cliente={clienteActivo} onLogout={handleLogout} />}
       </div>
     </div>
