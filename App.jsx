@@ -1552,7 +1552,7 @@ export default function LojaEmpro() {
               <div style={{ fontSize:20, fontWeight:800, color: T.navy, fontFamily: S.display, lineHeight:1 }}>EMPRO</div>
             </div>
             <div style={{ width:1, height:28, background: T.border }} />
-            <div style={{ fontSize:12, color: T.muted }}>{cliente.name}</div>
+            <div style={{ fontSize:12, color: T.muted }}>{clienteActivo.name}</div>
           </div>
 
           {/* Nav central */}
@@ -1580,8 +1580,8 @@ export default function LojaEmpro() {
           {/* Right */}
           <div style={{ display:"flex", alignItems:"center", gap:12 }}>
             <div style={{ textAlign:"right" }}>
-              <div style={{ fontSize:12, fontWeight:600, color: T.navy }}>{cliente.name}</div>
-              <div style={{ fontSize:10, color: T.muted }}>Tipo {cliente.tipo} · {cliente.desconto_base}% desconto</div>
+              <div style={{ fontSize:12, fontWeight:600, color: T.navy }}>{clienteActivo.name}</div>
+              <div style={{ fontSize:10, color: T.muted }}>Tipo {clienteActivo.tipo} · {clienteActivo.desconto_base}% desconto</div>
             </div>
             <button onClick={handleLogout} style={{ background:"none", border:`1px solid ${T.border}`, borderRadius:8, padding:"7px 10px", cursor:"pointer", color: T.muted, display:"flex", alignItems:"center", gap:6, fontSize:12 }}>
               <LogOut size={14} /> Sair
