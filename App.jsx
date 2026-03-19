@@ -65,8 +65,9 @@ const S = {
 const INVITE_CODE = "EMPRO2025";
 
 const CLIENT = {
-  name: "Restaurante Marina", nif: "501234567", local: "Albufeira",
+  name: "Restaurante Marina", nome: "Restaurante Marina", nif: "501234567", local: "Albufeira",
   tipo: "A", comercial: "João Ferreira", phone: "+351 912 000 000",
+  email: "marina@restaurante.pt",
   saldo: 2740.80, limite: 8000, credito: 5259.20,
   desconto_base: 5,
 };
@@ -182,7 +183,7 @@ function Btn({ children, onClick, variant="primary", size="md", icon: Icon, full
 }
 
 /* ── ECRÃ: Acesso por Convite ── */
-function EcrãLogin({ onAccess }) {
+function EcrãLogin() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
@@ -195,29 +196,17 @@ function EcrãLogin({ onAccess }) {
     if (!email || !password) return setError("Preencha o email e a password.");
     setLoading(true); setError("");
     try {
-      const cred = await signInWithEmailAndPassword(auth, email, password);
-      // Verificar se cliente está activo no Firestore
-      const snap = await new Promise(resolve => {
-        const unsub = onSnapshot(
-          query(collection(db, "clientes")),
-          s => { unsub(); resolve(s); }
-        );
-      });
-      const clienteDoc = snap.docs.find(d => d.data().uid === cred.user.uid || d.data().email === email);
-      if (clienteDoc && clienteDoc.data().ativo === false) {
-        await signOut(auth);
-        setError("Conta desactivada. Contacte a EMPRO.");
-        setShake(true); setTimeout(() => setShake(false), 500);
-      } else {
-        onAccess(cred.user, clienteDoc?.data() || {});
-      }
+      await signInWithEmailAndPassword(auth, email, password);
+      // onAuthStateChanged no componente pai trata o resto
     } catch (e) {
       const msgs = {
         "auth/invalid-credential": "Email ou password incorrectos.",
-        "auth/user-not-found": "Email não encontrado.",
+        "auth/invalid-login-credentials": "Email ou password incorrectos.",
+        "auth/user-not-found": "Email não encontrado. Contacte a EMPRO.",
         "auth/wrong-password": "Password incorrecta.",
         "auth/too-many-requests": "Demasiadas tentativas. Tente mais tarde.",
         "auth/invalid-email": "Email inválido.",
+        "auth/user-disabled": "Conta desactivada. Contacte a EMPRO.",
       };
       setError(msgs[e.code] || "Erro ao entrar. Tente novamente.");
       setShake(true); setTimeout(() => setShake(false), 500);
@@ -1414,16 +1403,28 @@ export default function LojaEmpro() {
   const [loadingProdutos, setLoadingProdutos] = useState(true);
   const authReady = useAuthReady();
 
-  // Ouvir alterações de autenticação
+  // Ouvir alterações de autenticação + carregar dados do cliente
   useEffect(() => {
-    const unsub = onAuthStateChanged(auth, user => {
+    const unsub = onAuthStateChanged(auth, async user => {
       if (user && !user.isAnonymous) {
         setUtilizador(user);
+        // Carregar dados do cliente do Firestore
+        try {
+          const snap = await new Promise(resolve => {
+            const u = onSnapshot(collection(db, "clientes"), s => { u(); resolve(s); });
+          });
+          const doc = snap.docs.find(d =>
+            d.data().uid === user.uid || d.data().email === user.email
+          );
+          if (doc) setClienteData(doc.data());
+        } catch (e) {
+          console.warn("Não foi possível carregar dados do cliente:", e.message);
+        }
       } else {
         setUtilizador(null);
         setClienteData(null);
       }
-      setAuthLoading(false); // sessão verificada
+      setAuthLoading(false);
     });
     return unsub;
   }, []);
@@ -1462,11 +1463,7 @@ export default function LojaEmpro() {
     return unsub;
   }, [authReady]);
 
-  const handleLogin = (user, dados) => {
-    setUtilizador(user);
-    setClienteData(dados);
-    setPage("dashboard");
-  };
+  const handleLogin = () => {}; // login tratado pelo onAuthStateChanged
 
   const handleLogout = async () => {
     await signOut(auth);
@@ -1509,13 +1506,15 @@ export default function LojaEmpro() {
   // Dados do cliente activo (do Firebase ou dados fixos como fallback)
   const clienteActivo = clienteData ? {
     ...CLIENT,
+    name: clienteData.nome || CLIENT.name,
     nome: clienteData.nome || CLIENT.nome,
     nif: clienteData.nif || CLIENT.nif,
+    local: clienteData.local || CLIENT.local,
     tipo: clienteData.tipo || CLIENT.tipo,
     desconto_base: clienteData.desconto || CLIENT.desconto_base,
     comercial: clienteData.comercial || CLIENT.comercial,
     email: utilizador?.email || CLIENT.email,
-  } : CLIENT;
+  } : { ...CLIENT, email: utilizador?.email || CLIENT.email };
 
   if (authLoading) return (
     <div style={{ minHeight:"100vh", background: T.navyD, display:"flex", alignItems:"center", justifyContent:"center", fontFamily: S.font }}>
@@ -1527,7 +1526,7 @@ export default function LojaEmpro() {
     </div>
   );
 
-  if (!utilizador) return <EcrãLogin onAccess={handleLogin} />;
+  if (!utilizador) return <EcrãLogin />;
 
   const cartCount = cart.reduce((s,c) => s+c.qty, 0);
 
