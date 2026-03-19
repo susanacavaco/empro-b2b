@@ -9,6 +9,7 @@ import {
 } from "lucide-react";
 import { initializeApp } from "firebase/app";
 import { getFirestore, collection, addDoc, serverTimestamp, onSnapshot, query, orderBy } from "firebase/firestore";
+import { getAuth, signInAnonymously } from "firebase/auth";
 
 /* ── Firebase ── */
 const firebaseConfig = {
@@ -21,6 +22,8 @@ const firebaseConfig = {
 };
 const firebaseApp = initializeApp(firebaseConfig);
 const db = getFirestore(firebaseApp);
+const auth = getAuth(firebaseApp);
+signInAnonymously(auth).catch(e => console.warn("Auth anónima falhou:", e.message));
 
 /* ── Google Fonts ── */
 const fontLink = document.createElement("link");
